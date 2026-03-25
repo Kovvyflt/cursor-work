@@ -15,7 +15,7 @@
 \usepackage{microtype}
 
 %% ── Page Geometry ───────────────────────────────────────────
-\usepackage[margin=2.5cm,top=3cm,bottom=3cm]{geometry}
+\usepackage[margin=2.5cm,top=3cm,bottom=3cm,headheight=14pt]{geometry}
 
 %% ── Mathematics ─────────────────────────────────────────────
 \usepackage{amsmath,amssymb,amsthm,mathtools}
@@ -196,13 +196,14 @@
 %% ── Math Macros ─────────────────────────────────────────────
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\Sph}{\mathbb{S}}
-\newcommand{\Norm}[1]{\left\|#1\right\|_2}
+\newcommand{\Norm}[1]{\left\|#1\right\|}
 \newcommand{\Loss}{\mathcal{L}}
 \newcommand{\KG}{\mathcal{G}}
 \newcommand{\LN}{\mathrm{LayerNorm}}
 \newcommand{\GELU}{\mathrm{GELU}}
 \newcommand{\MHA}{\mathrm{MHA}}
 \newcommand{\argmax}{\operatornamewithlimits{arg\,max}}
+\newcommand{\argmin}{\operatornamewithlimits{arg\,min}}
 \newcommand{\softmax}{\mathrm{softmax}}
 \newcommand{\EE}{\mathbb{E}}
 \newcommand{\MA}{\mathcal{M}_A}
@@ -804,7 +805,7 @@ Fusion is beneficial iff the modalities are \emph{complementary}: each carries i
 \end{definition}
 
 \begin{theorem}[Cross-Modal Attention Fusion Expressiveness]
-With $K$ modality tokens and $h$ attention heads, the cross-modal Transformer can represent any pairwise cross-modal interaction. Specifically, each head $i$ can specialise in the interaction $(\eA, \eB_i)$ for $\binom{K}{2}$ distinct pairs, while the CLS-token mean-pooling aggregates all interactions linearly.
+With $K$ modality tokens and $h$ attention heads, the cross-modal Transformer can represent any pairwise cross-modal interaction. Specifically, each head $i$ can specialise in the interaction $(\eA, \mathbf{e}_{B,i})$ for $\binom{K}{2}$ distinct pairs, while the CLS-token mean-pooling aggregates all interactions linearly.
 \end{theorem}
 
 \begin{definition}[Multi-Task Fusion Loss — Pipeline E]
@@ -953,11 +954,11 @@ In MIVA-KNIGHT, the strong modality is the \emph{text encoder} (BERT + TextProje
   \draw[thickarr] (weakNN.east) -- ++(0.5,0) |- (coloss.west);
   \draw[thickarr] (shared2.south) -- (coloss.north);
   \draw[redarr,dashed] (coloss.west) -- ++(-0.4,0) |- (weakNN.east)
-      node[near end,right,font=\tiny]{update $\phi$\\(5.25M params)};
+      node[near end,right,align=left,font=\tiny]{update $\phi$\\(5.25M params)};
   \draw[arr,color=modalA,very thick,dashed] (strongNN.south) -- ++(0,-0.4) -- ++(0,-0.4)
-      node[below,font=\small\bfseries,color=modalA]{knowledge\\transfer $\downarrow$} -- (weakNN.north);
+      node[below,align=center,font=\small\bfseries,color=modalA]{knowledge\\transfer $\downarrow$} -- (weakNN.north);
 
-  \node[font=\small\bfseries,color=navyblue] at ($(strongNN)!0.5!(weakNN)+(1.8,0)$) {2.23\% of\\235M params};
+  \node[align=center,font=\small\bfseries,color=navyblue] at ($(strongNN)!0.5!(weakNN)+(1.8,0)$) {2.23\% of\\235M params};
 \end{tikzpicture}
 \end{adjustbox}
 \caption{Challenge 4 — Co-learning: the strong text encoder (blue, frozen) provides bootstrap targets in $\Sph^{511}$; the weak image encoder (red) is trained to match those targets via InfoNCE + distillation loss.}
@@ -1108,7 +1109,7 @@ Given sequences $\mathbf{x}_A = [x_A^{(1)},\ldots,x_A^{(T_A)}]$ and $\mathbf{x}_
     {\textbf{Aligned Output}\\[4pt]
      \begin{tikzpicture}[scale=0.6]
        \draw[modalA,thick,smooth,domain=0:4.5,samples=60]
-         plot (\x, {0.35*sin(180*\x r)+0.15*sin(360*\x r)});
+         plot (\x, {0.35*sin(180*\x)+0.15*sin(360*\x)});
        \foreach \x/\lbl in {0.5/a,1.5/b,2.5/c,3.5/d} {
          \draw[modalB,thick] (\x-0.3,-0.7)--(\x-0.3,0.7);
          \node[font=\small\bfseries,color=modalB] at (\x,-1.0) {\lbl};
