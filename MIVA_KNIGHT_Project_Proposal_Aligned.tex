@@ -1,0 +1,208 @@
+% =============================================================================
+% MIVA-KNIGHT — Project Proposal (Aligned with Repository Evidence)
+% Revises claims in IT571__Project_Proposal (1).pdf to match implemented scope
+% documented across capstone .tex sources and companion .ipynb notebooks.
+% =============================================================================
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{setspace}
+\setstretch{1.1}
+
+\hypersetup{colorlinks=true,linkcolor=blue!40!black,urlcolor=blue!50!black,
+  pdftitle={MIVA-KNIGHT Aligned Project Proposal}}
+
+\title{\textbf{MIVA-KNIGHT}\\[0.25em]
+\large Aligned Project Proposal:\\
+Multimodal Perception, Hybrid Retrieval, and Grounded Voice QA}
+\author{IT Capstone --- revised to match repository artifacts}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This proposal supersedes earlier draft language that mixed aspirational benchmarks,
+internally inconsistent retrieval weights, and medical datasets not used in the
+implemented radiology track. It describes MIVA-KNIGHT as a \emph{research prototype}:
+frozen backbone encoders (text, image, audio, and optionally video frames), trainable
+projection heads into a shared $512$-dimensional unit hypersphere, FAISS-based dense
+retrieval, lightweight knowledge-graph re-ranking from corpus-derived entity
+co-occurrence, tiered confidence gating, and LLM generation constrained on retrieved
+context. Affect estimation (RAVDESS, CREMA-D) and multimodal sentiment fusion
+(CMU-MOSI / Pipeline~E) are \emph{separate training tracks} integrated at the prompt or
+routing layer, not a single end-to-end cross-attention model over all corpora.
+Companion notebooks exercise representation, fusion, and reinforcement-learning
+\emph{demos}; they do not by themselves establish production safety or cloud-free
+deployment.
+\end{abstract}
+
+\section{Revision note (what changed vs.\ the prior proposal PDF)}
+
+The anchor document (\texttt{IT571\_\_Project\_Proposal (1).pdf}) correctly motivates
+hybrid RAG, multimodal inputs, and domain adaptation, but contained several items that
+\emph{do not match} the codebase and technical write-ups in this repository:
+
+\begin{itemize}[nosep]
+  \item \textbf{Retrieval weights:} objectives stated both $60\%/40\%$ (dense/KG) and
+        later $70\%/30\%$. The implementation narrative is better described as
+        \emph{two-stage retrieval}: dense shortlist (FAISS) followed by graph-based
+        re-scoring, not a single fixed linear blend of uncertain calibration.
+  \item \textbf{``Cross-attention fusion'' across COCO + RAVDESS:} the documented system
+        primarily uses \emph{modality-specific encoders + shared embedding space} and
+        separate affect pipelines. Joint contrastive training of unrelated modalities
+        without true pairs was identified as harmful; Pipeline~C is explicitly
+        \emph{standalone} audio training. Transformer-style fusion appears for CMU-MOSI
+        (Pipeline~E), not as the main COCO/RAVDESS integration path.
+  \item \textbf{Medical imaging dataset:} the PDF cites MIMIC-CXR with a
+        $\mathrm{P@}1 > 95\%$ goal. The radiology alignment work in-repo centres on
+        \textbf{ROCO} (image--caption pairs), with reported retrieval metrics on ROCO
+        validation splits --- not MIMIC-CXR training as the primary corpus.
+  \item \textbf{External benchmarks:} targets such as HaluBench ($>90\%$) and Diffbot
+        multi-hop ($>80\%$) are not evidenced in the repository deliverables and should
+        be treated as \textbf{future evaluation}, not capstone commitments.
+  \item \textbf{COCO scale:} ``25{,}000 validation images'' is incorrect for COCO
+        val2017 (order $10^3$ images). Training uses subsets and caption pools as
+        documented per notebook.
+  \item \textbf{KG construction:} the PDF's limitations mention word-frequency graphs
+        while later sections assume NER-driven traversal. The aligned story is:
+        \textbf{spaCy / scispaCy} entity extraction for general vs.\ medical domains,
+        with PMI-weighted co-occurrence --- not a manually curated clinical ontology.
+  \item \textbf{Privacy vs.\ APIs:} local Whisper and containerisation support a
+        privacy narrative, but \textbf{Groq} (Llama inference) and \textbf{gTTS} are
+        network services unless replaced with on-prem models. The proposal must not
+        claim fully offline operation without listing exact local substitutes.
+\end{itemize}
+
+\section{Problem statement}
+
+Voice-first assistants fail in high-stakes settings when they (i) hallucinate without
+verifiable evidence, (ii) ignore non-text modalities, and (iii) cannot swap domain
+knowledge without full retraining. MIVA-KNIGHT addresses (i) with retrieval-grounded
+generation and confidence tiers, (ii) with audio and image encoders mapped into a
+shared metric space, and (iii) with hot-swappable indices and domain configs while
+keeping shared projection weights fixed per the capstone axioms.
+
+\section{Research question (refined)}
+
+\emph{How can dense multimodal embeddings, hybrid retrieval (vector index + corpus
+graph signals), and a constrained LLM be composed so that answers remain tied to
+retrieved evidence, while emotion and sentiment modules supply auxiliary context for
+response style?}
+
+\section{System architecture (as built)}
+
+\subsection{Modality encoders and shared space}
+Text (BERT-family), images (ResNet features + image projection), and audio (Wav2Vec
+features + audio projection) map to unit-norm vectors in $\mathbb{S}^{511}$.
+Domain transfer for radiology emphasises retraining or adapting the \emph{image
+projection} head while freezing most backbone parameters, as detailed in Month~4 ROCO
+documentation.
+
+\subsection{Runtime pipeline (assistant loop)}
+\begin{enumerate}[label=\textbf{Step \arabic*.}]
+  \item Ingest text and/or speech (speech may be transcribed with Whisper-class STT).
+  \item Encode query into the shared embedding space.
+  \item Retrieve a shortlist with FAISS; re-rank with knowledge-graph signals derived
+        from entity co-occurrence in the active corpus.
+  \item Apply domain-specific confidence thresholds (traffic-light tiers).
+  \item Generate with Llama-class LLM using only top-$k$ retrieved passages.
+  \item Optional TTS; optional display of source snippets for auditability.
+\end{enumerate}
+
+\subsection{Offline training tracks (pipelines A--E)}
+\begin{center}
+\small
+\begin{tabular}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Track} & \textbf{Data} & \textbf{Purpose} \\
+\midrule
+A & COCO & General image--text alignment; general index + KG. \\
+B & ROCO & Medical image--caption alignment; medical index + KG; surgical visual adapter. \\
+C & RAVDESS & Audio emotion prototypes; \textbf{not} jointly trained with COCO. \\
+D & CREMA-D & Audio--video emotion; InfoNCE / SupCon phases; warm-start from C. \\
+E & CMU-MOSI & Three-stream sentiment fusion (text + audio + video frame); distinct from RAG retrieval fusion. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Notebooks: scope}
+The \texttt{MIVA\_KNIGHT\_Challenges\_Implementation*.ipynb} notebooks demonstrate five
+multimodal ML challenges (representation, translation proxies, fusion heads, co-learning
+contrasts, alignment) on CMU-MOSI and CREMA caches. The
+\texttt{MIVA\_KNIGHT\_RL\_Implementation\_*.ipynb} notebooks implement DQN-family
+\emph{toy} control loops with multimodal state encoders as pedagogical complements to
+the RL thesis chapter; they are not claims of deployed robotics.
+
+\section{Objectives (measurable and honest)}
+
+\begin{itemize}[nosep]
+  \item \textbf{Retrieval quality:} report $\mathrm{P@}k$, MRR on held-out caption
+        retrieval for COCO and ROCO as actually computed (including ablations for KG
+        contribution where implemented).
+  \item \textbf{Emotion / sentiment:} report per-class accuracy or MAE on RAVDESS,
+        CREMA-D, and CMU-MOSI with the documented train/validation protocol (e.g.\
+        video-level splits for MOSI).
+  \item \textbf{Grounding:} qualitative and quantitative checks that answers cite
+        retrieved spans; abstain rate under red-tier thresholds.
+  \item \textbf{Engineering:} reproducible artifact paths (indices, checkpoints,
+        caches), container images or environment specs, and latency of domain swap
+        (index reload) where measured.
+\end{itemize}
+
+\noindent
+\textbf{Explicit non-goals for the capstone prototype:} certifying HIPAA/GDPR
+compliance, hitting unpublished third-party benchmark SOTA, or claiming real-time
+streaming audio throughout without measured latency budgets.
+
+\section{Evaluation plan}
+
+\begin{enumerate}[nosep]
+  \item Retrieval benchmarks on fixed validation draws from COCO and ROCO.
+  \item Emotion benchmarks on RAVDESS / CREMA-D with confusion matrices.
+  \item MOSI sentiment metrics separating regression (MAE) from classification (Acc-2),
+        with notes on pseudo-label or label-noise issues when applicable.
+  \item Optional \textbf{future work}: HaluBench-style hallucination probes and multi-hop
+        QA sets once a stable generator--retriever interface is frozen.
+\end{enumerate}
+
+\section{Risks and mitigations}
+
+\begin{description}[style=nextline,font=\normalfont\bfseries]
+  \item[Modality interference.] Avoid joint contrastive training without true multimodal
+        pairs; keep affect training on emotion datasets isolated from caption noise.
+  \item[Cloud dependence.] Document every external API; provide a ``local-only''
+        configuration table (STT, LLM, TTS substitutes).
+  \item[Over-claiming fusion.] Reserve ``cross-attention fusion'' language for
+        Pipeline~E (or explicit fusion heads), not for the entire MIVA-KNIGHT stack.
+  \item[Medical safety.] ROCO is an \emph{IR} corpus; outputs are not diagnostic
+        devices. Add institutional review and clinician-in-the-loop for any clinical use.
+\end{description}
+
+\section{Deliverables}
+
+\begin{itemize}[nosep]
+  \item LaTeX technical reports and thesis chapters as in the repository.
+  \item Trained checkpoints, FAISS indices, KG serialisations, embedding caches.
+  \item Notebooks with README paths for Google Drive / Colab assets.
+  \item Demo script: voice or text query $\rightarrow$ retrieval trace $\rightarrow$
+        grounded answer $\rightarrow$ optional emotion-conditioned phrasing.
+\end{itemize}
+
+\section{Conclusion}
+
+MIVA-KNIGHT \emph{is} a multimodal system in the engineering sense: multiple encoders,
+shared geometry for retrieval, hybrid sparse--dense evidence selection, and LLM
+synthesis with guardrails. It is \emph{not} a single unified transformer trained
+end-to-end on all datasets simultaneously. This aligned proposal matches that reality,
+preserves the scientific contribution, and removes benchmark and dataset claims that
+the repository does not substantiate.
+
+\end{document}
