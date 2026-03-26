@@ -1,0 +1,340 @@
+% ============================================================
+%  MIVA-KNIGHT — Refined Abstract
+%  Multi-modal Industrial Voice Assistant with
+%  Knowledge-Integrated Hybrid Reasoning (Hybrid RAG)
+% ============================================================
+\documentclass[12pt,a4paper]{article}
+
+% ── Core packages ──────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[dvipsnames,svgnames]{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+
+% ── Hyperref setup ─────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=NavyBlue,
+  citecolor=ForestGreen,
+  urlcolor=Maroon,
+  pdftitle={MIVA-KNIGHT Abstract},
+  pdfauthor={MIVA-KNIGHT Project}
+}
+
+% ── Colour palette ─────────────────────────────────────────
+\definecolor{mivablue}{RGB}{25,84,163}
+\definecolor{mivagreen}{RGB}{34,139,34}
+\definecolor{mivaorange}{RGB}{210,105,30}
+\definecolor{mivapurple}{RGB}{106,13,173}
+\definecolor{mivagray}{RGB}{100,100,100}
+\definecolor{boxbg}{RGB}{245,248,255}
+
+% ── Section formatting ─────────────────────────────────────
+\titleformat{\section}
+  {\large\bfseries\color{mivablue}}
+  {{\color{mivablue}\thesection}}{0.8em}{}[\titlerule]
+
+% ── Header / Footer ────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{mivagray}\textbf{MIVA-KNIGHT} \textemdash\ Abstract}
+\fancyhead[R]{\small\color{mivagray}Hybrid RAG $\cdot$ Multi-modal AI}
+\fancyfoot[C]{\small\color{mivagray}\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── tcolorbox style ────────────────────────────────────────
+\tcbset{
+  abstractsec/.style={
+    enhanced, breakable,
+    colback=boxbg, colframe=mivablue,
+    fonttitle=\bfseries\color{white},
+    attach boxed title to top left={yshift=-2mm, xshift=4mm},
+    boxed title style={colback=mivablue, rounded corners},
+    arc=4pt, outer arc=4pt,
+    top=6pt, bottom=6pt, left=8pt, right=8pt
+  }
+}
+
+% ── Document ───────────────────────────────────────────────
+\begin{document}
+
+% ── Title block ────────────────────────────────────────────
+\begin{center}
+  {\LARGE\bfseries\color{mivablue} MIVA-KNIGHT}\\[0.3cm]
+  {\large\color{mivablue!80}
+    Multi-modal Industrial Voice Assistant\\[0.15cm]
+    with Knowledge-Integrated Hybrid Reasoning}\\[0.5cm]
+  {\normalsize\color{mivagray}
+    \textit{A Domain-Adaptive, Privacy-Preserving AI Platform\\
+    Powered by Hybrid RAG, Structured Knowledge Graphs,\\
+    and Explainable Multi-modal Reasoning}}\\[0.6cm]
+  \begin{tabular}{cc}
+    \toprule
+    \textbf{Modalities}      & Text,\ Image,\ Voice,\ Sensor Data \\
+    \textbf{Domains}         & Healthcare,\ Energy,\ Manufacturing,\ Finance,\ Education \\
+    \textbf{Core Techniques} & Hybrid RAG-LightRAG,\ Knowledge Graph,\ Grad-CAM,\ XAI \\
+    \textbf{Deployment}      & On-premise containerised microservices (Docker) \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+\vspace{0.5cm}
+\hrule
+\vspace{0.5cm}
+
+% ════════════════════════════════════════════════════════════
+\section*{Background}
+% ════════════════════════════════════════════════════════════
+
+Voice assistants have fundamentally changed how humans interact with information, yet
+mainstream AI systems continue to prioritise surface-level answer generation over
+factual depth and verifiability. Trained predominantly on broad, noisy internet corpora,
+today's large language models (LLMs) exhibit strong general reasoning but fail critically
+when applied to privacy-sensitive industrial domains that demand rigorously grounded
+knowledge---such as medical diagnostics, corporate governance, or industrial process control.
+
+Three structural deficiencies limit the adoption of current architectures in these sectors.
+First, \textbf{lack of structured knowledge grounding}: models are unaware of
+expert-curated domain ontologies, making them prone to confident hallucination.
+Second, \textbf{unimodal perception}: state-of-the-art systems rarely integrate text,
+images, audio, and sensor streams in a unified, semantically coherent framework.
+Third, \textbf{cloud dependency and privacy risk}: reliance on remote APIs makes
+deployment in privacy-critical environments---hospitals, energy infrastructure,
+financial institutions---operationally and legally untenable.
+
+Alberta's diversified industrial economy provides both the urgent motivation and the
+real-world testbeds required to address these challenges at scale.
+
+% ════════════════════════════════════════════════════════════
+\section*{Purpose}
+% ════════════════════════════════════════════════════════════
+
+This project develops \textbf{MIVA-KNIGHT}
+(\textbf{M}ulti-modal \textbf{I}ndustrial \textbf{V}oice \textbf{A}ssistant with
+\textbf{K}nowledge-\textbf{N}etwork \textbf{I}ntegrated \textbf{G}raph \textbf{H}ybrid
+\textbf{T}ransformer)---an end-to-end, domain-adaptive AI platform designed to shift the
+paradigm from \emph{``knowing it all''} to \emph{``knowing it right''}.
+
+MIVA-KNIGHT grounds every generated response in verifiable, structured domain evidence
+by fusing a Hybrid Retrieval-Augmented Generation (RAG-LightRAG) framework with
+Neo4j-based domain Knowledge Graphs, multi-modal transformer fusion, and visual
+explainability via Grad-CAM. All components operate entirely on-premise, within
+containerised microservices, to meet the strictest institutional data-sovereignty
+requirements.
+
+% ════════════════════════════════════════════════════════════
+\section*{Methods}
+% ════════════════════════════════════════════════════════════
+
+\begin{tcolorbox}[abstractsec, title={Architecture Overview}]
+MIVA-KNIGHT is the functional composition of five independent sub-systems:
+\[
+  \text{MIVA-KNIGHT}
+  \;=\; S_{\mathrm{KG}} \;\circ\; S_{\mathrm{Retrieval}}
+  \;\circ\; S_{\mathrm{Fusion}} \;\circ\; S_{\mathrm{Reasoning}}
+  \;\circ\; S_{\mathrm{Generator}}
+\]
+Each sub-system exposes well-defined input/output contracts and can be swapped
+independently. If any input modality is unavailable, its embedding is replaced by
+the zero vector $e_m = \mathbf{0}_{d_m}$, ensuring the pipeline degrades
+gracefully without failure.
+\end{tcolorbox}
+
+\textbf{Input processing.}
+The system accepts text, images, voice, and numeric sensor streams simultaneously.
+Dedicated encoders---BERT for text, a ViT/ResNet encoder for images, Wav2Vec~2.0
+for audio, and a lightweight MLP for sensor time-series---map each modality into a
+shared 512-dimensional embedding space via learnable linear projection heads. This
+design keeps foundation encoders frozen across domains while allowing rapid
+domain adaptation by updating only the projection heads.
+
+\textbf{Hybrid Retrieval (RAG-LightRAG).}
+Candidate evidence is retrieved via a two-stage hybrid mechanism. The \emph{dense
+retrieval} stage computes cosine similarity between the fused query embedding and a
+FAISS vector index of domain documents:
+\[
+  \mathrm{score}_{\mathrm{dense}}(q, d)
+  = \frac{\mathrm{Enc}(q)\cdot\mathrm{Enc}(d)}
+         {\|\mathrm{Enc}(q)\|\;\|\mathrm{Enc}(d)\|}
+\]
+The \emph{graph retrieval} stage (LightRAG) performs multi-hop DFS traversal over
+a Neo4j Knowledge Graph $\mathcal{G} = (\mathcal{V}, \mathcal{E}, \mathcal{R})$,
+scoring paths by inverse length:
+\[
+  \mathrm{score}_{\mathrm{graph}}(q, e)
+  = \sum_{p \in \mathcal{P}(q,\,e)} \frac{1}{|p|+1}\cdot\mathrm{rel}(p)
+\]
+The two scores are combined via a convex mixture controlled by $\alpha \in [0,1]$:
+\[
+  \boxed{
+    \mathrm{score}_{\mathrm{hybrid}}(q, c)
+    = \alpha\cdot\mathrm{score}_{\mathrm{dense}}(q, c)
+    + (1-\alpha)\cdot\mathrm{score}_{\mathrm{graph}}(q, c)
+  }
+\]
+Setting $\alpha = 1$ recovers pure dense retrieval; $\alpha = 0$ recovers pure
+graph retrieval.
+
+\textbf{Multi-modal fusion.}
+Projected modality embeddings are stacked into a sequence
+$\mathbf{X} = [h_t;\, h_i;\, h_v;\, h_s]$ and passed through an 8-head
+Multi-Head Attention fusion layer with residual connections and layer normalisation:
+\[
+  e_{\mathrm{fused}}
+  = \mathrm{MeanPool}\!\Bigl(
+      \mathrm{LN}\!\bigl[\mathbf{X}' + \mathrm{FFN}(\mathbf{X}')\bigr]
+    \Bigr),
+  \quad
+  \mathbf{X}' = \mathrm{LN}\!\bigl(\mathbf{X} + \mathrm{MHA}(\mathbf{X})\bigr)
+\]
+Cross-modal alignment is enforced during training via a contrastive loss (InfoNCE)
+targeting cosine similarity $\geq 0.8$ between paired modalities.
+
+\textbf{Knowledge Graph grounding.}
+A Named Entity Recognition (NER) module extracts entities from the query; the KG
+module retrieves multi-hop relational context $\mathbf{K}_{\mathrm{KG}}$ via DFS
+up to depth $k = 2$. Domain graphs are constructed in Neo4j with $10{,}000$--$50{,}000$
+entities per domain, spanning healthcare, energy, manufacturing, finance, and education.
+
+\textbf{Transformer reasoning and response generation.}
+A 4-layer Transformer Encoder processes $e_{\mathrm{fused}}$ with cross-attention
+over $\mathbf{K}_{\mathrm{KG}}$:
+\[
+  r = \mathrm{OutputHead}\!\Bigl(
+        x + \mathrm{Attention}(x,\, \mathbf{K}_{\mathrm{KG}},\, \mathbf{K}_{\mathrm{KG}})
+      \Bigr),
+  \quad
+  x = \mathrm{TransformerEncoder}^{(4)}(e_{\mathrm{fused}})
+\]
+A confidence-tiered mechanism rejects low-confidence queries before generation to
+prevent hallucination. The final response $\hat{y} = \mathrm{FFN}(r)$ is accompanied
+by a Grad-CAM visual explanation localising the image regions that drove the answer:
+\[
+  \mathrm{CAM}^c
+  = \mathrm{ReLU}\!\left(\sum_k \alpha_k^c\, A^k\right),
+  \quad
+  \alpha_k^c = \frac{1}{Z}\sum_{i,j}
+    \frac{\partial y^c}{\partial A_{ij}^k}
+\]
+
+\textbf{Training objective.}
+The system is trained end-to-end with a multi-objective loss:
+\[
+  \mathcal{L}
+  = \mathcal{L}_{\mathrm{task}}
+  + \lambda_1\,\mathcal{L}_{\mathrm{contr}}
+  + \lambda_2\,\mathcal{L}_{\mathrm{KG}}
+  + \lambda_3\,\mathcal{L}_{\mathrm{explain}}
+\]
+
+\textbf{Deployment.}
+All components are containerised via Docker as independent microservices
+(API Gateway, Voice Service, Retrieval Service, Knowledge Graph Service, Reasoning Service,
+Explanation Service) communicating through message queues (RabbitMQ/Kafka) with Redis
+caching---enabling secure, fully offline, on-premise operation.
+
+% ════════════════════════════════════════════════════════════
+\section*{Anticipated Results}
+% ════════════════════════════════════════════════════════════
+
+Quantitative targets are established across five evaluation dimensions:
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{Formula} & \textbf{Target} \\
+\midrule
+Accuracy          & $|\hat{y}=y|/N$                       & $\geq 90\%$    \\
+Macro-F1          & $\overline{F1_c}$ across classes       & $\geq 0.88$    \\
+MRR               & $\frac{1}{|Q|}\sum_i 1/r_i$           & $\geq 0.80$    \\
+Precision@1       & Top-1 retrieval accuracy              & $> 60\%$       \\
+Precision@3       & Top-3 retrieval accuracy              & $> 75\%$       \\
+Interpretability  & $1 - H(A)/\log|A|$                    & $\geq 0.60$    \\
+Inference latency & $\mathbb{E}[t]$ over 100 trials       & $< 2\,\mathrm{s}$ \\
+Domain hot-swap   & FAISS index replacement time          & $< 5\,\mathrm{s}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The prototype is expected to demonstrate \textbf{zero-shot domain adaptability}---
+seamlessly transitioning between specialisations (e.g.\ medical radiology and corporate
+governance) by hot-swapping only the FAISS index and domain Knowledge Graph, while
+the shared multi-modal embedding space and transformer backbone remain intact.
+Regression testing will confirm that baseline knowledge is retained without
+catastrophic forgetting.
+
+Target domain-level impact projections include: $+30\%$ diagnostic accuracy and
+$-40\%$ diagnosis time in healthcare; $-15\%$ operational cost in energy;
+$-40\%$ equipment downtime in manufacturing; $+25\%$ risk-assessment accuracy
+in finance; and $+50\%$ learner engagement with $-60\%$ search overhead in education.
+
+% ════════════════════════════════════════════════════════════
+\section*{Conclusions}
+% ════════════════════════════════════════════════════════════
+
+MIVA-KNIGHT represents a principled departure from opaque, cloud-dependent AI towards
+\textbf{transparent, sovereign, and knowledge-grounded} intelligence. By isolating a
+shared multi-modal embedding space from domain-specific FAISS indexes and Knowledge
+Graphs, the architecture achieves rapid domain adaptation without retraining foundational
+components. By combining hybrid RAG-LightRAG retrieval with structured KG reasoning and
+Grad-CAM explainability, it delivers responses that are not only accurate but fully
+auditable---every answer is traceable to specific retrieved documents and graph-traversal
+paths.
+
+Deployed entirely on-premise within containerised microservices, MIVA-KNIGHT eliminates
+the privacy liability inherent in cloud-based inference---a prerequisite for adoption in
+healthcare, energy, and financial sectors. The system offers a level of factual
+transparency, interpretability, and data sovereignty that no legacy consumer voice
+assistant can match.
+
+The open-source, containerised framework will be released to enable continued research
+in multi-modal reasoning and explainable AI, positioning Alberta as a leader in
+human-centric, sovereign AI innovation.
+
+% ── Bibliography ───────────────────────────────────────────
+\vspace{0.5cm}
+\begin{thebibliography}{9}
+\bibitem{whisper}
+  A.~Radford et al., ``Robust Speech Recognition via Large-Scale Weak Supervision,''
+  \emph{ICML}, 2023.
+
+\bibitem{bert}
+  J.~Devlin et al., ``BERT: Pre-training of Deep Bidirectional Transformers
+  for Language Understanding,'' \emph{NAACL}, 2019.
+
+\bibitem{lightrag}
+  Edge et al., ``From Local to Global: A Graph RAG Approach to Query-Focused
+  Summarization,'' \emph{arXiv:2404.16130}, 2024.
+
+\bibitem{wav2vec}
+  A.~Baevski et al., ``wav2vec 2.0: A Framework for Self-Supervised Learning
+  of Speech Representations,'' \emph{NeurIPS}, 2020.
+
+\bibitem{gradcam}
+  R.~R. Selvaraju et al., ``Grad-CAM: Visual Explanations from Deep Networks
+  via Gradient-Based Localization,'' \emph{ICCV}, 2017.
+
+\bibitem{infonce}
+  A.~van den Oord et al., ``Representation Learning with Contrastive Predictive
+  Coding,'' \emph{arXiv:1807.03748}, 2018.
+
+\bibitem{transformer}
+  A.~Vaswani et al., ``Attention Is All You Need,'' \emph{NeurIPS}, 2017.
+
+\bibitem{neo4j}
+  I.~Robinson et al., \emph{Graph Databases}, O'Reilly Media, 2015.
+
+\bibitem{faiss}
+  J.~Johnson et al., ``Billion-Scale Similarity Search with GPUs,''
+  \emph{IEEE Trans.\ Big Data}, 2019.
+\end{thebibliography}
+
+\end{document}
