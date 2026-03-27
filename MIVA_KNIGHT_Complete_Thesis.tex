@@ -309,6 +309,8 @@ MIVA-KNIGHT (Multimodal Interactive Voice Assistant with Knowledge-driven Hybrid
 
 The system achieves P@1\,=\,64.6\% on COCO val2017, MRR\,=\,0.727 on ROCO radiology, emotion accuracy $\geq$\,59\% on RAVDESS (6/8 classes), sentiment MAE\,=\,0.7238 on CMU-MOSI, domain-swap latency $<$\,5\,s, and hallucination mitigation $>$\,90\% --- all within a zero-cost, open-source deployment stack.
 
+The reference implementation \texttt{MIVA\_KNIGHT\_PipelineE\_Cmumosi\_Comprehensive\_Refined.ipynb} operationalises Pipeline~E end-to-end: \emph{strict} multimodal inclusion (both \texttt{.wav} and \texttt{.mp4} required per segment; no synthetic audio or placeholder video frames), one-time embedding caching with optional fields $(\texttt{text}, \texttt{wav\_path}, \texttt{mp4\_path})$ for auditability, Whisper-based Challenge~2 (WER), FAISS\,+\,co-occurrence KG hybrid retrieval over CMU-MOSI training transcripts, and a normalised cross-challenge metric dashboard --- formalised in Sections~\ref{sec:pipelineE_strict}--\ref{sec:pipelineE_publication}.
+
 \begin{tcolorbox}[keybox,title={Summary of Contributions}]
 \begin{enumerate}[label=\textbf{C\arabic*.}]
   \item \textbf{Domain-Agnostic Embedding Space:} Formal proof that a single $\Sph^{511}$ enables cross-domain, cross-modal retrieval without shared-encoder retraining.
@@ -316,6 +318,7 @@ The system achieves P@1\,=\,64.6\% on COCO val2017, MRR\,=\,0.727 on ROCO radiol
   \item \textbf{Unified Five-Challenge Framework:} First formal treatment of all five MML challenges (Representation, Translation, Fusion, Co-learning, Alignment) in one coherent system.
   \item \textbf{Three-Phase Contrastive Training:} Progressive InfoNCE $\to$ SupCon training for audio-visual emotion recognition.
   \item \textbf{Multimodal Transformer Fusion:} Pre-LN, 8-head, 2-layer Transformer for three-modality sentiment analysis.
+  \item \textbf{Pipeline~E Comprehensive Notebook:} Strict multimodal cohort, auditable cache schema, empirical five-challenge suite (InfoNCE/P@$k$, Whisper WER, fusion metrics, co-learning and alignment gaps), and transcript-level hybrid RAG ($\alpha_{\text{E}}=0.6$) over CMU-MOSI training text.
   \item \textbf{Tiered-Confidence RAG:} Three-tier hallucination guard with domain-aware confidence thresholds ($\tau_G=0.40$, $\tau_M=0.55$).
   \item \textbf{DQN Robot Control:} Multimodal sub-classifier state encoding + experience replay + dual Q-networks + NLP feedback loop.
   \item \textbf{Free-Stack Deployment:} Complete system on Google Colab/Drive with zero-cost API access.
@@ -1720,6 +1723,177 @@ Pre-LN architecture: $x' = x + \text{Attn}(\LN(x))$, $x'' = x' + \text{FFN}(\LN(
 \end{algorithm}
 
 %%
+%% --- Pipeline E: comprehensive notebook integration (thesis-grade) ---
+%%
+\subsection{Strict multimodal protocol, pseudo-labels, and embedding cache}
+\label{sec:pipelineE_strict}
+
+The comprehensive notebook enforces a \textbf{strict multimodal cohort}: a segment is admitted only if both \path{Audio/WAV_16000/Segmented/{vid}_{seg}.wav} and \path{Video/Segmented/{vid}_{seg}.mp4} exist. This matches the engineering requirement that Pipeline~E training never relies on synthetic silence or gray-frame video placeholders.
+
+\begin{axiom}[Strict Multimodal Integrity (Pipeline~E)]
+\label{ax:strict_mosi}
+Let $\mathcal{U}$ be the set of segment IDs in the CMU-MOSI standard video-level split. The training population is $\mathcal{U}^\star = \{u \in \mathcal{U} : \text{file}(\text{audio},u) \wedge \text{file}(\text{video},u)\}$. All reported Pipeline~E statistics are computed on $\mathcal{U}^\star$ unless explicitly ablated.
+\end{axiom}
+
+\begin{definition}[TextBlob pseudo-label on $[-3,+3]$]
+When gold sentiment annotations are unavailable, each transcript line yields
+\[
+  y \;=\; \mathrm{clip}\bigl(3 \cdot \mathrm{polarity}_{\text{TB}}(\text{text}),\,-3,\,+3\bigr),\qquad
+  b \;=\; \mathbf{1}[y > 0],
+\]
+where $\mathrm{polarity}_{\text{TB}} \in [-1,1]$ is TextBlob's rule-based polarity.
+\end{definition}
+
+\begin{remark}[Impact on Acc-2]
+Pseudo-label noise primarily hurts \textbf{binary} agreement (Acc-2) while regression MAE can remain competitive with strong frozen encoders --- consistent with reported MAE vs.\ MulT/MISA comparisons in the notebook.
+\end{remark}
+
+\begin{algorithm}[H]
+\caption{Strict CMU-MOSI sample list and multimodal cache (Pipeline~E notebook)}
+\label{alg:mosi_cache_strict}
+\begin{algorithmic}[1]
+\Require \textsc{Transcript/Segmented/*.annotprocessed}; \textsc{Audio/}; \textsc{Video/}; train/valid/test video ID lists
+\Ensure Cache dictionary $\mathcal{C}: \text{segment\_id} \mapsto \{\hat{e}_T,\hat{e}_A,\hat{e}_V,y,b,\texttt{split},\texttt{text},p_{\text{wav}},p_{\text{mp4}}\}$
+\State $\mathcal{S} \gets \emptyset$
+\ForEach{file $f = \texttt{\{vid\}.annotprocessed}$}
+  \If{$\texttt{vid} \notin$ standard split} \textbf{continue} \EndIf
+  \ForEach{line with $\texttt{seg}\_\texttt{DELIM}\_\texttt{text}$}
+    \If{$\neg$ \textsc{Exists}$(\texttt{wav}(\texttt{vid},\texttt{seg}))$ \textbf{or} $\neg$ \textsc{Exists}$(\texttt{mp4}(\texttt{vid},\texttt{seg}))$} \textbf{continue} \EndIf
+    \State append segment metadata (text, paths, $y$, $b$, split) to $\mathcal{S}$
+  \EndFor
+\EndFor
+\If{$\mathcal{S} = \emptyset$} \textbf{error:} no multimodal segments \EndIf
+\If{cache file exists with $> 100$ entries} \State \Return loaded $\mathcal{C}$ \EndIf
+\ForEach{$s \in \mathcal{S}$}
+  \State $\hat{e}_T \gets \textsc{EncText}(s.\text{text})$ \Comment{BERT [CLS] $\to$ TextProj $\to \Sph^{511}$}
+  \State $\hat{e}_A \gets \textsc{EncAudio}(s.p_{\text{wav}})$ \Comment{Wav2Vec mean-pool $\to$ AudioProj}
+  \State $\hat{e}_V \gets \textsc{EncVideo}(s.p_{\text{mp4}})$ \Comment{ResNet middle frame $\to$ VideoProj}
+  \State store all fields in $\mathcal{C}[s.\text{id}]$
+\EndFor
+\State \Return $\mathcal{C}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Empirical five-challenge suite on CMU-MOSI}
+\label{sec:pipelineE_challenges}
+
+The notebook instantiates the taxonomy of \S\ref{sec:fivechallenges} \emph{on the same cached embeddings} as the fusion model, yielding reproducible diagnostics beyond raw test MAE.
+
+\begin{theorem}[Monotone Step Sentiment Labels (inference)]
+\label{thm:step_labels}
+The \texttt{MultimodalFusionDetector} maps $\hat{y} \in \R$ to one of seven ordered sentiment classes via a fixed threshold ladder; the map is monotone in $\hat{y}$ (piecewise-constant inverse of a monotone partition of $\R$).
+\end{theorem}
+
+\begin{lemma}[Random InfoNCE baseline]
+For symmetric InfoNCE with in-batch negatives, $\mathbb{E}[\mathcal{L}_{\mathrm{NCE}}] \approx \log B$ at random initialization, $B$ batch size.
+\end{lemma}
+
+\begin{algorithm}[H]
+\caption{Challenge suite C1--C5 + fusion metrics (test split, notebook)}
+\label{alg:pipeline_e_challenges}
+\begin{algorithmic}[1]
+\Require Cache $\mathcal{C}$; trained $\pi_\theta$; test keys $\mathcal{K}_{\text{test}}$
+\State \textbf{C1 (Representation):} On $\mathcal{K}' \subseteq \mathcal{K}_{\text{test}}$, compute $\mathrm{P@}k$, MRR for text$\to$audio retrieval with diagonal relevance; optional $\mathcal{L}_{\mathrm{NCE}}$ on batches of $(\hat{e}_T,\hat{e}_A)$.
+\State \textbf{C2 (Translation):} For $k \leq |\mathcal{K}_{\text{test}}|$, run Whisper \texttt{base} on real \texttt{.wav}; reference text from $\mathcal{C}[\cdot].\texttt{text}$, then \texttt{all\_samples}, else parse \texttt{.annotprocessed}. Report mean WER, score $1-\mathrm{WER}$.
+\State \textbf{C3 (Fusion):} Evaluate $\pi_\theta$ on test loader: MAE, Pearson $r$, Acc-2 $(\mathrm{sign}(\hat{y})=\mathrm{sign}(y))$, weighted F1.
+\State \textbf{C4 (Co-learning):} Compare $\mathbb{E}[\langle \hat{e}_T,\hat{e}_A\rangle]$ same-segment vs.\ shuffled audio on train subset; report gap.
+\State \textbf{C5 (Alignment):} Same-segment vs.\ permuted-audio cosine gap; optional soft-attention and DTW cost on short embedding sequences.
+\State \Return metric dictionary for dashboard
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=0.55cm and 0.75cm,
+  ch/.style={basebox,minimum width=2.15cm,minimum height=0.95cm,font=\scriptsize},
+]
+  \node[ch,fill=reprYellow,draw=reprBorder] (c1) {C1\\Repr.\\P@$k$/MRR};
+  \node[ch,fill=transGray,draw=transBorder,right=of c1] (c2) {C2\\Trans.\\Whisper WER};
+  \node[ch,fill=fuseRose,draw=fuseBorder,right=of c2] (c3) {C3\\Fusion\\MAE/Acc2};
+  \node[ch,fill=coLearnPurple,draw=coLearnBorder,right=of c3] (c4) {C4\\Co-learn\\cosine gap};
+  \node[ch,fill=alignBlue,draw=alignBorder,right=of c4] (c5) {C5\\Align.\\gap/DTW};
+  \node[ch,fill=boxgreen!50,draw=mintgreen!70,below=1.1cm of c3] (dash) {Normalised\\bar chart\\(viz only)};
+  \draw[thickarr] (c1)--(c2)--(c3)--(c4)--(c5);
+  \foreach \x in {c1,c2,c3,c4,c5} \draw[dasharr] (\x.south) -- ++(0,-0.35) -| (dash.north);
+\end{tikzpicture}%
+}
+\caption{Pipeline~E Part~II: five multimodal challenges evaluated on shared CMU-MOSI cache embeddings; optional dashboard compares \emph{normalised} scalars (C1: P@1; C2: $1-$WER; C3: Acc-2; C4/C5: clipped alignment gaps) for visualisation only --- not a single commensurate ``accuracy''.}
+\label{fig:pipeline_e_challenges_flow}
+\end{figure}
+
+\subsection{Knowledge graph and hybrid RAG restricted to CMU-MOSI transcripts}
+\label{sec:pipelineE_mosi_rag}
+
+The notebook constructs a \textbf{corpus-specific} knowledge graph $\KG_{\text{MOSI}}$ from \emph{training-split} transcript strings using the same co-occurrence edge pattern as Month~1 (\texttt{appears\_with}) and a 2-hop DFS neighbour expansion (cf.\ Algorithms~\ref{alg:kg_build}--\ref{alg:kgdfs}). Dense retrieval uses a separate BERT mean-pooled encoder and FAISS \texttt{IndexFlatIP} over training documents $d_i$ (each a full transcript line).
+
+\begin{definition}[Hybrid score on MOSI corpus]
+Let $s_{\text{dense}}(q,d_i)$ be inner product similarity between L2-normalised BERT vectors (equivalently cosine). Let $b_{\KG}(q,d_i)$ be the maximum $1/(h{+}1)$ boost from any query entity's $h$-hop neighbour lemma appearing in $d_i$. Then
+\begin{equation}
+  s_{\text{hyb}}(q,d_i) \;=\; \alpha_{\text{E}}\, s_{\text{dense}}(q,d_i) + (1-\alpha_{\text{E}})\, b_{\KG}(q,d_i),
+  \qquad \alpha_{\text{E}} = 0.6.
+\end{equation}
+\end{definition}
+
+\begin{remark}[$\alpha$ vs.\ global hybrid RAG]
+The global assistant (\S\ref{sec:retrieval}) uses $\alpha=0.7$ in some expositions; the MOSI notebook uses $\alpha_{\text{E}}=0.6$ to match the annotated training notebook's dense/graph blend. Both are convex combinations preserving a valid score mixture.
+\end{remark}
+
+\begin{algorithm}[H]
+\caption{Hybrid retrieval over CMU-MOSI training transcripts (notebook)}
+\label{alg:mosi_hybrid_rag}
+\begin{algorithmic}[1]
+\Require Query string $q$; FAISS index over $\{\phi(d_i)\}$; $\KG_{\text{MOSI}}$; $\alpha_{\text{E}}$; shortlist multiplier $m$
+\State $\mathbf{q} \gets \mathrm{L2Norm}(\text{BERT-mean}(q))$
+\State $\mathcal{I} \gets \argtopk[m\cdot K]$ by $\mathbf{q}^\top \phi(d_i)$ \Comment{FAISS inner product}
+\State extract query entities $\mathcal{E}_q$ by lemma overlap with $\KG_{\text{MOSI}}.\mathcal{V}$
+\ForEach{$i \in \mathcal{I}$}
+  \State $b_i \gets \textsc{GraphBoost}(d_i, \mathcal{E}_q, \KG_{\text{MOSI}})$ \Comment{max over neighbours, hop decay}
+  \State $s_i \gets \alpha_{\text{E}} \cdot s_{\text{dense},i} + (1-\alpha_{\text{E}}) \cdot b_i$
+\EndFor
+\State \Return top-$K$ documents by $s_i$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.7cm and 1.0cm]
+  \node[inputnode,minimum width=2.4cm] (q) {Query $q$\\(test transcript)};
+  \node[encnode,right=of q,minimum width=2.8cm] (bert) {BERT\\mean-pool\\$\R^{768}$};
+  \node[retnode,right=of bert,minimum width=2.6cm] (fa) {FAISS\\IndexFlatIP\\shortlist};
+  \node[encnode,below=0.9cm of bert,minimum width=2.8cm] (ent) {Entity\\overlap\\$\mathcal{E}_q$};
+  \node[retnode,right=of ent,minimum width=2.8cm] (kg) {KG$_{\text{MOSI}}$\\2-hop DFS\\boost $b$};
+  \node[basebox,fill=fusioncolor!15,draw=fusioncolor,right=1.2cm of fa,yshift=-0.45cm,minimum width=3.0cm,minimum height=1.2cm] (mix) {$s_{\text{hyb}}=\alpha_{\text{E}} s_d$\\$+\ (1{-}\alpha_{\text{E}}) b$};
+  \node[outnode,right=of mix,minimum width=2.5cm] (out) {Top-$K$\\MOSI lines};
+  \draw[thickarr] (q)--(bert)--(fa);
+  \draw[arr] (q.south)--++(0,-0.25)-|(ent.west);
+  \draw[thickarr] (ent)--(kg);
+  \draw[arr] (fa.south)--++(0,-0.2)-|(mix.north);
+  \draw[arr] (kg.east)--++(0.35,0)|-(mix.south);
+  \draw[thickarr] (mix)--(out);
+\end{tikzpicture}%
+}
+\caption{Hybrid RAG \emph{inside} the CMU-MOSI training corpus: dense BERT--FAISS shortlisting plus graph boost from co-occurrence entities (notebook Part~II).}
+\label{fig:mosi_hybrid_rag}
+\end{figure}
+
+\subsection{Publication roadmap: from thesis to competitive venues}
+\label{sec:pipelineE_publication}
+
+\begin{itemize}[nosep]
+  \item \textbf{NeurIPS / ICML / ICLR:} emphasise \emph{strict multimodal integrity}, pseudo-label bias analysis, and the five-challenge evaluation as a \textbf{diagnostic suite} for multimodal sentiment; contrastive retrieval (C1) + the InfoNCE random-baseline lemma.
+  \item \textbf{CVPR / ICCV:} foreground middle-frame video protocol, strict failure modes (corrupt \texttt{.mp4}), and optional visual quality ablations.
+  \item \textbf{Interspeech / ICASSP:} foreground Whisper WER (C2), Wav2Vec frozen backbone, and audio--text alignment gaps (C5).
+  \item \textbf{ACL / EMNLP:} foreground $\KG_{\text{MOSI}}$ hybrid retrieval over \emph{spoken-content transcripts} as a lightweight domain adaptation of HybridRAG-style systems.
+\end{itemize}
+
+\begin{remark}[Condensing to an IEEE-style article]
+A camera-ready version merges \S\ref{sec:pipelineE_strict}--\ref{sec:pipelineE_mosi_rag} into: (i) Problem + strict cohort, (ii) Method (cache + Pre-LN fusion), (iii) Five-challenge evaluation table + hybrid transcript retrieval, (iv) Limitations (TextBlob, middle frame), (v) Ethics. Figures~\ref{fig:pipeline_e}--\ref{fig:mosi_hybrid_rag} provide the main architecture + diagnostic flow.
+\end{remark}
+
+%%
 %% ============================================================
 %% PART XII — FULL MIVA-KNIGHT SYSTEM PIPELINE
 %% ============================================================
@@ -2325,6 +2499,9 @@ Alg.~\ref{alg:frame_extract} & CREMA-D middle-frame extraction & \S\ref{sec:pipe
 Alg.~\ref{alg:stage1_d} & Pipeline D Stage 1: 13-epoch cross-modal InfoNCE & \S\ref{sec:pipelineD} \\[3pt]
 Alg.~\ref{alg:fusion_forward} & Pipeline E: MultimodalFusionTransformer.forward & \S\ref{sec:pipelineE} \\[3pt]
 Alg.~\ref{alg:training_e} & Pipeline E: 20-epoch multi-task training loop & \S\ref{sec:pipelineE} \\[3pt]
+Alg.~\ref{alg:mosi_cache_strict} & Pipeline E: strict MOSI cache + multimodal integrity & \S\ref{sec:pipelineE_strict} \\[3pt]
+Alg.~\ref{alg:pipeline_e_challenges} & Pipeline E: C1--C5 challenge suite + fusion metrics & \S\ref{sec:pipelineE_challenges} \\[3pt]
+Alg.~\ref{alg:mosi_hybrid_rag} & Pipeline E: hybrid FAISS + KG on MOSI transcripts & \S\ref{sec:pipelineE_mosi_rag} \\[3pt]
 Alg.~\ref{alg:swap} & Domain hot-swap (FAISS + KG + NER only) & \S\ref{sec:system} \\[3pt]
 Alg.~\ref{alg:subclassifier} & RL sub-classifier: multimodal state encoding & \S\ref{sec:rl} \\[3pt]
 Alg.~\ref{alg:replay_memory} & Experience replay memory (push/sample/batch) & \S\ref{sec:rl} \\[3pt]
