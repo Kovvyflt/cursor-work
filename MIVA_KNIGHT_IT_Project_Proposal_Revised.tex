@@ -1,0 +1,214 @@
+% =============================================================================
+% MIVA-KNIGHT — Revised IT Project Proposal (aligned with repository docs)
+% Supersedes narrative inconsistencies found across capstone .tex sources.
+% Student context: IT 581 Capstone — Concordia University of Edmonton
+% =============================================================================
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{setspace}
+\setstretch{1.12}
+
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!60!black}
+
+\title{\textbf{MIVA-KNIGHT}\\[0.35em]
+\large Revised Project Proposal:\\
+Multimodal Perception, Shared Embeddings, and Grounded Voice QA}
+\author{IT 581 Capstone (revised synthesis)}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document replaces earlier proposal wording that mixed \emph{runtime system stages}
+with \emph{offline training tracks}, understated the number of experimental pipelines,
+or implied a single monolithic multimodal model where the implementation is in fact a
+\emph{composition} of frozen encoders, trainable projection heads, retrieval (FAISS),
+knowledge-graph re-ranking, and a separate generator (LLM). The goal remains a
+research prototype of a domain-adaptive, multimodal-aware voice assistant with
+verifiable retrieval grounding; the revision states scope, dependencies, and
+limitations in terms that match the technical documentation already produced for
+pipelines A--E and the hybrid RAG stack.
+\end{abstract}
+
+\section{Problem and objective}
+
+Users expect voice interfaces to use \textbf{text}, \textbf{speech}, and sometimes
+\textbf{images} coherently. Large vision--language models offer one path, but this
+project explores a modular architecture: specialised encoders map modalities into a
+shared metric space, retrieval supplies evidence, and a language model synthesises
+answers constrained by retrieved context. A secondary objective is \textbf{affect-aware
+routing}: audio (and where available, video) cues inform emotion or sentiment estimates
+that can modulate prompts or downstream behaviour.
+
+\paragraph{Success criteria (engineering).}
+\begin{itemize}[nosep]
+  \item Demonstrate \textbf{cross-modal alignment} (e.g., image--text InfoNCE) into a
+        common $512$-d unit hypersphere for retrieval.
+  \item Demonstrate \textbf{domain transfer} for the visual branch (e.g., general
+        images $\to$ radiology captions) with minimal retraining of the image-to-space
+        adapter, as documented for the ROCO track.
+  \item Demonstrate \textbf{grounded QA}: answers tied to retrieved documents with
+        explicit confidence handling, not unconstrained hallucination.
+  \item Demonstrate \textbf{standalone affect pipelines} where joint training with
+        unrelated image--text pairs would corrupt the embedding space (lessons from
+        Pipeline~C).
+\end{itemize}
+
+\section{System scope: two different ``phase'' vocabularies}
+
+Earlier materials used ``Phase~1--4'' for two incompatible ideas. This proposal
+\emph{separates} them:
+
+\subsection*{Runtime stages (online assistant loop)}
+The \textbf{hybrid RAG} stack documented in the capstone exposition is best described
+as four \textbf{runtime stages}, not ``pipelines'':
+\begin{enumerate}[label=(\arabic*)]
+  \item \textbf{Encode} user query (text and/or audio via ASR/embeddings) into the
+        shared retrieval embedding space.
+  \item \textbf{Retrieve} top-$K$ candidates with FAISS, then re-rank with PMI-style
+        knowledge-graph signals.
+  \item \textbf{Generate} an answer from an LLM conditioned on retrieved context,
+        with tiered confidence / abstention where appropriate.
+  \item \textbf{Speak} (optional TTS) the response.
+\end{enumerate}
+
+\subsection*{Offline training tracks (research pipelines A--E)}
+\textbf{Pipelines} are \emph{offline} experiments that train or freeze components.
+The repository documentation describes \textbf{five} such tracks, not four:
+\begin{center}
+\small
+\begin{tabular}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Track} & \textbf{Primary data} & \textbf{Role in the larger system} \\
+\midrule
+A / general IR & COCO (text + image) &
+  Image--text alignment; general-domain FAISS index and KG. \\
+B / medical IR & ROCO (radiology text + image) &
+  Medical-domain index; surgical transfer of the image projection head. \\
+C / audio emotion & RAVDESS &
+  Audio-only SupCon; emotion centroids; fixes prior joint-training contamination. \\
+D / audio--video emotion & CREMA-D &
+  Cross-modal InfoNCE + SupCon phases; inherits audio head warm-start from C. \\
+E / multimodal sentiment & CMU-MOSI &
+  Optional research branch: three-stream fusion (text + audio + video frame) for
+  sentiment regression; uses pseudo-labels where gold labels are unavailable---reported
+  metrics must be interpreted accordingly. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Correction to prior text:} calling MIVA-KNIGHT a ``four-pipeline'' system
+while also documenting Pipeline~E is internally inconsistent. The accurate statement
+is: \emph{four core retrieval/affect tracks (A--D) plus one optional MOSI sentiment
+fusion track (E).}
+
+\section{Multimodal alignment assessment}
+
+From a software and ML engineering perspective, the work \textbf{does align} with the
+intent of building a multimodal system, with these clarifications:
+
+\begin{itemize}
+  \item \textbf{Modality coverage:} text, image, audio, and (in Pipeline~D/E) video
+        frames are all represented. There is no single transformer that ingests raw
+        pixels, waveforms, and tokens jointly in all paths; instead, \textbf{modality
+        experts} (BERT, ResNet, Wav2Vec, etc.) feed \textbf{projection heads} into a
+        shared space. This is a valid and common industrial pattern (compose experts,
+        do not force one backbone).
+  \item \textbf{Fusion vs retrieval:} the RAG path fuses information at the
+        \textbf{token/context level} inside the LLM after retrieval, not only at the
+        embedding level. Pipeline~E's Transformer fusion is a \emph{different}
+        experimental head for MOSI-style sentiment; it should not be described as
+        identical to the retrieval encoder stack without integration proof.
+  \item \textbf{Domain transfer claim:} the radiology transfer story (retrain mainly
+        the image adapter, freeze most parameters) is coherent with parameter-efficient
+        adaptation practice. Any document that simultaneously claims ``only the image
+        head'' and ``TextProjection minor nudge'' should pick one \emph{per experiment
+        configuration} and report both if both were run.
+  \item \textbf{Pipeline~C lesson:} joint InfoNCE between unrelated modalities without
+        true paired semantics can \textbf{damage} the shared space; the standalone
+        audio track is the correct engineering response. Proposals should cite this as
+        risk mitigation, not hide it.
+  \item \textbf{Pipeline~E limitation:} pseudo-labels add noise; accuracy gaps vs
+        published supervised methods should be expected. The proposal must not imply
+        parity with fully supervised SOTA without that caveat.
+\end{itemize}
+
+\section{Revised high-level architecture narrative}
+
+Figure~\ref{fig:concept} summarises the \textbf{conceptual} architecture (components
+may reside in separate services or notebooks in the prototype).
+
+\begin{figure}[htbp]
+\centering
+\fbox{\parbox{0.92\textwidth}{
+\small
+\textbf{User} $\rightarrow$ (speech $\rightarrow$ ASR/embeddings; optional image)
+$\rightarrow$ \textbf{Shared 512-d space}\\
+$\rightarrow$ \textbf{FAISS} $\rightarrow$ \textbf{KG re-rank} $\rightarrow$
+\textbf{LLM + citations/confidence} $\rightarrow$ (optional TTS)\\[0.5em]
+\textbf{Parallel affect path:} audio (+\ optionally video frame) $\rightarrow$
+frozen backbones $\rightarrow$ trained projections $\rightarrow$
+\textbf{centroid or fusion head} $\rightarrow$ label/score for prompt modulation.
+}}
+\caption{Conceptual data flow: retrieval stack (top) and affect branch (bottom).
+Training tracks A--E populate indices, projections, centroids, or fusion weights.}
+\label{fig:concept}
+\end{figure}
+
+\section{Work packages (revised)}
+
+\begin{enumerate}
+  \item \textbf{Shared embedding API:} contract for unit-norm vectors, batching, and
+        device placement; single source of truth for dimension $512$.
+  \item \textbf{Index lifecycle:} build/rebuild FAISS for each domain; version metadata
+        with corpus checksums.
+  \item \textbf{KG + NER:} spaCy/scispaCy pipelines per domain; PMI edges; bounded DFS
+        for neighbour expansion.
+  \item \textbf{Generator integration:} prompt templates, context packing, refusal
+        tiers, optional Groq/Llama backends as documented.
+  \item \textbf{Affect modules:} export centroid tensors and projection checkpoints;
+        document warm-start chain C$\to$D and separate evaluation splits (video-level
+        for MOSI).
+  \item \textbf{Evaluation:} retrieval metrics (P@$k$, MRR) on held-out captions;
+        emotion per-class accuracy; for MOSI, separate reporting for regression vs
+        binary tasks under pseudo-label noise.
+  \item \textbf{Reproducibility:} pinned dependencies, saved caches for heavy
+        encoders, and explicit notebook$\leftrightarrow$document version mapping.
+\end{enumerate}
+
+\section{Risks and mitigations}
+
+\begin{description}[style=nextline,font=\normalfont\bfseries]
+  \item[Vocabulary collision.] Always say \textbf{runtime stage} vs
+        \textbf{training track} when using ``phase'' or ``pipeline.''
+  \item[Scope creep.] Pipeline~E is optional research; the capstone demo can be
+        complete without it if time-constrained.
+  \item[Label noise.] Flag pseudo-labels in E; do not merge MOSI metrics with CREMA-D
+        emotion numbers without context.
+  \item[Integration debt.] Retrieval + LLM + TTS + affect is multiple subsystems;
+        define minimal integration slice (e.g., text QA + audio emotion only) first.
+\end{description}
+
+\section{Deliverables}
+
+\begin{itemize}[nosep]
+  \item LaTeX technical reports per track (as in repository).
+  \item Trained projection weights, FAISS indices, KG serialisations, centroid files.
+  \item Runnable notebooks or scripts with README describing which artifact each
+        produces (note: notebooks referenced in existing \texttt{.tex} files must be
+        present in the submission bundle for full reproducibility).
+  \item Short demo narrative mapping user utterance $\rightarrow$ retrieval $\rightarrow$
+        grounded answer $\rightarrow$ optional emotional tone of response.
+\end{itemize}
+
+\end{document}
