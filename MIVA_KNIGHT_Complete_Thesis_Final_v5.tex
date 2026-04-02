@@ -142,6 +142,13 @@
 \definecolor{transBorder}{RGB}{130,130,130}
 \definecolor{modalA}{RGB}{30,80,160}
 \definecolor{modalB}{RGB}{180,40,40}
+% RL injection v2 (needed before global TikZ styles)
+\definecolor{rlpolicy}{RGB}{255,235,200}
+\definecolor{rlpolicyborder}{RGB}{180,100,20}
+\definecolor{rlAudioC}{RGB}{255,220,200}
+\definecolor{rlVideoC}{RGB}{220,245,220}
+\definecolor{rlTextC}{RGB}{220,230,255}
+\definecolor{rlFusionC}{RGB}{245,220,245}
 
 %% ── Theorem Environments ────────────────────────────────────
 \theoremstyle{definition}
@@ -184,7 +191,16 @@
   bluearr/.style={->,>=Stealth,thick,color=robotblue},
   dasharr/.style={->,>=Stealth,thick,dashed,color=gray!60},
   feedarr/.style={->,>=Stealth,very thick,color=rlgreen},
-  fatarr/.style={double,double distance=3pt,->,>=Stealth,thick,color=cDark}
+  fatarr/.style={double,double distance=3pt,->,>=Stealth,thick,color=cDark},
+  rlpnode/.style={basebox,fill=rlpolicy,draw=rlpolicyborder,
+                  minimum width=3.2cm,minimum height=1.0cm,thick,font=\small\bfseries},
+  rlarr/.style={->,>=Stealth,very thick,color=rlpolicyborder},
+  rldasharr/.style={->,>=Stealth,thick,dashed,color=rlpolicyborder},
+  rlpnl/.style={basebox,fill=rlpolicy,draw=rlpolicyborder,
+                minimum width=3.0cm,minimum height=1.0cm,thick,font=\small\bfseries},
+  rlarrL/.style={->,>=Stealth,very thick,color=rlpolicyborder},
+  rldashL/.style={->,>=Stealth,thick,dashed,color=rlpolicyborder},
+  fusnode/.style={basebox,fill=fusioncolor!25,draw=fusioncolor,minimum width=3.2cm,minimum height=1.0cm,thick}
 }
 
 %% ── tcolorbox Styles ────────────────────────────────────────
@@ -229,7 +245,7 @@
 %% ── Math Macros ─────────────────────────────────────────────
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\Sph}{\mathbb{S}}
-\newcommand{\Norm}[1]{\left\|#1\right\|_2}
+\newcommand{\Norm}[1]{\left\|#1\right\|}
 \newcommand{\Loss}{\mathcal{L}}
 \newcommand{\KG}{\mathcal{G}}
 \newcommand{\Ent}{\mathcal{E}}
@@ -250,13 +266,6 @@
 \newcommand{\eB}{\mathbf{e}_B}
 
 
-%% ── RL Injection v2 colors ──────────────────────────────────
-\definecolor{rlpolicy}{RGB}{255,235,200}
-\definecolor{rlpolicyborder}{RGB}{180,100,20}
-\definecolor{rlAudioC}{RGB}{255,220,200}
-\definecolor{rlVideoC}{RGB}{220,245,220}
-\definecolor{rlTextC}{RGB}{220,230,255}
-\definecolor{rlFusionC}{RGB}{245,220,245}
 %% ============================================================
 \begin{document}
 
@@ -338,6 +347,7 @@ tone-adaptive response reports to reviewers.
   \item \textbf{Free-Stack Deployment:} Complete system on Google Colab/Drive with zero-cost API access.
   \item \textbf{Agentic Review Response System (ARRS):} A domain-universal five-stage agentic pipeline (claim decomposition $\to$ iterative hybrid RAG $\to$ verdict engine $\to$ tone-adaptive generation) for automated, evidence-cited review verification and response dispatch, reusing all MIVA-KNIGHT modules with zero architectural change.
 \end{enumerate}
+\end{tcolorbox}
 
 \section{Introduction}
 
@@ -1749,7 +1759,7 @@ The comprehensive notebook enforces a \textbf{strict multimodal cohort}: a segme
 Let $\mathcal{U}$ be the set of segment IDs in the CMU-MOSI standard video-level split. The training population is $\mathcal{U}^\star = \{u \in \mathcal{U} : \text{file}(\text{audio},u) \wedge \text{file}(\text{video},u)\}$. All reported Pipeline~E statistics are computed on $\mathcal{U}^\star$ unless explicitly ablated.
 \end{axiom}
 
-\begin{definition}[TextBlob pseudo-label on $[-3,+3]$]
+\begin{definition}[TextBlob pseudo-label on {$[-3,+3]$}]
 When gold sentiment annotations are unavailable, each transcript line yields
 \[
   y \;=\; \mathrm{clip}\bigl(3 \cdot \mathrm{polarity}_{\text{TB}}(\text{text}),\,-3,\,+3\bigr),\qquad
@@ -2588,22 +2598,6 @@ $N^*$ & RL-Text optimal document count $\in\{2,3,5,8\}$ \\
 \section{MIVA-KNIGHT-RL v2: Four Modality-Wide RL Injection Points}
 \label{sec:rl_injections}
 
-%% ── new colors needed for this chapter ──────────────────────
-\definecolor{rlpolicy}{RGB}{255,235,200}
-\definecolor{rlpolicyborder}{RGB}{180,100,20}
-\definecolor{rlAudioC}{RGB}{255,220,200}
-\definecolor{rlVideoC}{RGB}{220,245,220}
-\definecolor{rlTextC}{RGB}{220,230,255}
-\definecolor{rlFusionC}{RGB}{245,220,245}
-
-%% new tikz styles local to this chapter
-\tikzset{
-  rlpnode/.style={basebox,fill=rlpolicy,draw=rlpolicyborder,
-                  minimum width=3.2cm,minimum height=1.0cm,thick,font=\small\bfseries},
-  rlarr/.style={->,>=Stealth,very thick,color=rlpolicyborder},
-  rldasharr/.style={->,>=Stealth,thick,dashed,color=rlpolicyborder}
-}
-
 %% new tcolorbox style
 \tcbset{
   rlinjbox/.style={
@@ -3249,14 +3243,6 @@ conventions follow Figure~\ref{fig:full_pipeline}.
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[node distance=0.7cm and 1.2cm]
 
-%% ── RL injection node style (local) ──
-\tikzset{
-  rlpnl/.style={basebox,fill=rlpolicy,draw=rlpolicyborder,
-                minimum width=3.0cm,minimum height=1.0cm,thick,font=\small\bfseries},
-  rlarrL/.style={->,>=Stealth,very thick,color=rlpolicyborder},
-  rldashL/.style={->,>=Stealth,thick,dashed,color=rlpolicyborder}
-}
-
 %%── INPUTS ────────────────────────────────────────────────────
 \node[inputnode,minimum width=3.0cm] (tIn) at (0,0)  {\textbf{Text}};
 \node[inputnode,minimum width=3.0cm,below=0.5cm of tIn] (aIn) {\textbf{Audio}};
@@ -3524,6 +3510,7 @@ sends the reviewer a polite, well-cited reply: ``According to six verified sourc
 this film is classified as a psychological thriller, not horror. Critic and audience 
 consensus on the lead performance is predominantly positive (87\% approval). 
 Here is what we found\ldots''
+\end{tcolorbox}
 \end{tcolorbox}
 
 %%──────────────────────────────────────────────────────────────────────────────
@@ -4023,13 +4010,13 @@ confidence $\tau_G = 0.40$.
          reviewer tone; overall $\Omega$; LLM endpoint
 \Ensure Response report string $R_{\text{out}}$; optional gTTS audio
 \State \textbf{// Section 1: Header with overall confidence}
-\State $\Pi_1 \gets$ f``Your review has been verified (confidence: $\{100\Omega:.0f\}$\%).''
+\State $\Pi_1 \gets$ \texttt{Your review has been verified (confidence: \{100*Omega:.0f\}\%).}
 \State \textbf{// Section 2: Per-claim verdicts with evidence citations}
 \For{$i = 1$ to $M$}
   \State badge $\gets \{\mathtt{confirmed}: \checkmark, \mathtt{refuted}: \times, 
          \mathtt{nuanced}: \sim, \mathtt{unsupported}: ?\}[V_i]$
   \State top\_ev $\gets$ top-3$(\mathcal{E}_i, \text{by } s_j^{\text{hyb}})$
-  \State $\Pi_i \gets$ f``\{badge\} \{c_i.\phi\}\\nSources: \{top\_ev\}''
+  \State $\Pi_i \gets$ \texttt{\{badge\} \{claim\_text\} | Sources: \{top\_ev\}}
 \EndFor
 \State \textbf{// Section 3: Tone-adjusted closing message}
 \State $\Pi_{\text{close}} \gets \Pi_{\text{system}}(\text{tone})$ \Comment{Def.~\ref{def:response_prompt}}
@@ -4072,7 +4059,7 @@ confidence $\tau_G = 0.40$.
   \State $(\mathcal{E}_i, \kappa_i, k_i) \gets$ 
          \Call{AgenticRetrievalLoop}{$c_i$}
     \Comment{Algorithm~\ref{alg:arrs_retrieval_loop}}
-  \State log: f``Claim \{i\}: \{k_i\} rounds, $\kappa$=\{$\kappa_i:.3f$\}''
+  \State log: \texttt{Claim \{i\}: \{k\_i\} rounds, kappa=\{kappa\_i:.3f\}}
 \EndFor
 \State \textbf{Stage 4:} $\{V_i\}, \Omega \gets$ \Call{VerdictEngine}{$C, \{\mathcal{E}_i\}$}
   \Comment{Algorithm~\ref{alg:arrs_verdict}}
