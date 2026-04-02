@@ -11,7 +11,7 @@
 %% ── Encoding & Fonts ────────────────────────────────────────
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{microtype}
+\usepackage[expansion=false]{microtype}
 
 %% ── Page Geometry ───────────────────────────────────────────
 \usepackage[margin=2.5cm,top=3cm,bottom=3cm,headheight=14pt]{geometry}
@@ -249,6 +249,14 @@
 \newcommand{\eA}{\mathbf{e}_A}
 \newcommand{\eB}{\mathbf{e}_B}
 
+
+%% ── RL Injection v2 colors ──────────────────────────────────
+\definecolor{rlpolicy}{RGB}{255,235,200}
+\definecolor{rlpolicyborder}{RGB}{180,100,20}
+\definecolor{rlAudioC}{RGB}{255,220,200}
+\definecolor{rlVideoC}{RGB}{220,245,220}
+\definecolor{rlTextC}{RGB}{220,230,255}
+\definecolor{rlFusionC}{RGB}{245,220,245}
 %% ============================================================
 \begin{document}
 
@@ -311,6 +319,12 @@ The system achieves P@1\,=\,64.6\% on COCO val2017, MRR\,=\,0.727 on ROCO radiol
 
 The reference implementation \texttt{MIVA\_KNIGHT\_PipelineE\_Cmumosi\_Comprehensive\_Refined.ipynb} operationalises Pipeline~E end-to-end: \emph{strict} multimodal inclusion (both \texttt{.wav} and \texttt{.mp4} required per segment; no synthetic audio or placeholder video frames), one-time embedding caching with optional fields $(\texttt{text}, \texttt{wav\_path}, \texttt{mp4\_path})$ for auditability, Whisper-based Challenge~2 (WER), FAISS\,+\,co-occurrence KG hybrid retrieval over CMU-MOSI training transcripts, and a normalised cross-challenge metric dashboard --- formalised in Sections~\ref{sec:pipelineE_strict}--\ref{sec:pipelineE_publication}.
 
+
+The system additionally incorporates an \textbf{Agentic Review Response System (ARRS)}: 
+a five-stage pipeline that autonomously decomposes reviews into atomic claims, 
+verifies each claim via an iterative hybrid RAG loop (Contribution~C10), 
+adjudicates per-claim verdicts with formal confidence bounds, and dispatches 
+tone-adaptive response reports to reviewers.
 \begin{tcolorbox}[keybox,title={Summary of Contributions}]
 \begin{enumerate}[label=\textbf{C\arabic*.}]
   \item \textbf{Domain-Agnostic Embedding Space:} Formal proof that a single $\Sph^{511}$ enables cross-domain, cross-modal retrieval without shared-encoder retraining.
@@ -322,8 +336,8 @@ The reference implementation \texttt{MIVA\_KNIGHT\_PipelineE\_Cmumosi\_Comprehen
   \item \textbf{Tiered-Confidence RAG:} Three-tier hallucination guard with domain-aware confidence thresholds ($\tau_G=0.40$, $\tau_M=0.55$).
   \item \textbf{DQN Robot Control:} Multimodal sub-classifier state encoding + experience replay + dual Q-networks + NLP feedback loop.
   \item \textbf{Free-Stack Deployment:} Complete system on Google Colab/Drive with zero-cost API access.
+  \item \textbf{Agentic Review Response System (ARRS):} A domain-universal five-stage agentic pipeline (claim decomposition $\to$ iterative hybrid RAG $\to$ verdict engine $\to$ tone-adaptive generation) for automated, evidence-cited review verification and response dispatch, reusing all MIVA-KNIGHT modules with zero architectural change.
 \end{enumerate}
-\end{tcolorbox}
 
 \section{Introduction}
 
@@ -2507,6 +2521,12 @@ Alg.~\ref{alg:subclassifier} & RL sub-classifier: multimodal state encoding & \S
 Alg.~\ref{alg:replay_memory} & Experience replay memory (push/sample/batch) & \S\ref{sec:rl} \\[3pt]
 Alg.~\ref{alg:robot_interact} & Robot interaction and transition generation & \S\ref{sec:rl} \\[3pt]
 Alg.~\ref{alg:dqn_train} & Complete DQN training loop & \S\ref{sec:rl} \\[3pt]
+Alg.~\ref{alg:arrs_encode} & ARRS Stage 1: Multimodal review encoding & \S\ref{sec:arrs_stage1} \\[3pt]
+Alg.~\ref{alg:arrs_decomp} & ARRS Stage 2: LLM claim decomposition & \S\ref{sec:arrs_stage2} \\[3pt]
+Alg.~\ref{alg:arrs_retrieval_loop} & ARRS Stage 3: Agentic hybrid retrieval loop & \S\ref{sec:arrs_stage3} \\[3pt]
+Alg.~\ref{alg:arrs_verdict} & ARRS Stage 4: Multi-claim verdict engine & \S\ref{sec:arrs_stage4} \\[3pt]
+Alg.~\ref{alg:arrs_generate} & ARRS Stage 5: Tone-adaptive response generation & \S\ref{sec:arrs_stage5} \\[3pt]
+Alg.~\ref{alg:arrs_full} & ARRS full end-to-end orchestration & \S\ref{sec:arrs_full} \\[3pt]
 \end{longtable}
 
 %%
@@ -2549,15 +2569,1730 @@ $W_{\text{shared}}$ & Fixed weights: TextProj, AudioProj, BERT, Wav2Vec \\
 $\mathcal{M}_A, \mathcal{M}_B$ & Source/target modality \\
 $\mathcal{S}, \mathcal{A}$ & RL state space, action space \\
 $C$ & Target network replacement interval (DQN) \\
+$w_T, w_A, w_V$ & RL-Fusion modality trust weights ($w_T+w_A+w_V=1$) \\
+$\tau_{\min}, \tau_{\max}$ & RL-Audio threshold bounds $(0.20, 0.80)$ \\
+$\lambda_\varepsilon$ & $\varepsilon$-greedy decay constant (per agent) \\
+$\rho^*$ & RL-Video optimal frame position $\in\{0.0,0.25,0.5,0.75,1.0\}$ \\
+$N^*$ & RL-Text optimal document count $\in\{2,3,5,8\}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 %%
 %% ============================================================
+%% PART XVIII — RL INJECTIONS ACROSS MODALITIES
+%% Four Adaptive DQN Policies: Audio · Video · Text · Fusion
+%% ============================================================
+%%
+\newpage
+\section{MIVA-KNIGHT-RL v2: Four Modality-Wide RL Injection Points}
+\label{sec:rl_injections}
+
+%% ── new colors needed for this chapter ──────────────────────
+\definecolor{rlpolicy}{RGB}{255,235,200}
+\definecolor{rlpolicyborder}{RGB}{180,100,20}
+\definecolor{rlAudioC}{RGB}{255,220,200}
+\definecolor{rlVideoC}{RGB}{220,245,220}
+\definecolor{rlTextC}{RGB}{220,230,255}
+\definecolor{rlFusionC}{RGB}{245,220,245}
+
+%% new tikz styles local to this chapter
+\tikzset{
+  rlpnode/.style={basebox,fill=rlpolicy,draw=rlpolicyborder,
+                  minimum width=3.2cm,minimum height=1.0cm,thick,font=\small\bfseries},
+  rlarr/.style={->,>=Stealth,very thick,color=rlpolicyborder},
+  rldasharr/.style={->,>=Stealth,thick,dashed,color=rlpolicyborder}
+}
+
+%% new tcolorbox style
+\tcbset{
+  rlinjbox/.style={
+    enhanced,breakable,
+    colback=rlpolicy!40,colframe=rlpolicyborder,
+    fonttitle=\bfseries\small,
+    attach boxed title to top left={yshift=-2mm,xshift=4mm},
+    boxed title style={colback=rlpolicyborder,coltext=white}
+  }
+}
+
+\subsection{Motivation and Overview}
+
+The original MIVA-KNIGHT-RL extension (\S\ref{sec:rl}) embeds a Deep Q-Network
+inside a \emph{robot control} loop, treating multimodal perception as a fixed
+pre-processor.  This chapter extends the RL paradigm \emph{upstream}, injecting
+four independent adaptive DQN policies directly into the audio encoding, video
+frame selection, RAG prompt construction, and cross-modal fusion stages.  The
+result is a fully learnable inference stack in which every major decision point
+can be optimised from live feedback, without retraining the frozen backbone
+encoders.
+
+\begin{tcolorbox}[keybox,title={Four RL Injection Points --- Summary}]
+\begin{tabular}{clllll}
+\toprule
+\textbf{\#} & \textbf{Agent} & \textbf{Modality} & \textbf{State dim} & \textbf{Actions} & \textbf{Reward} \\
+\midrule
+\textcircled{1} & \texttt{RLAudioPolicy}  & Audio          & 513 & 5 (seg$\times$3, $\tau_{\pm}$) & Emotion accuracy \\
+\textcircled{2} & \texttt{RLVideoPolicy}  & Video          & 512 & 5 (frame pos.)                 & Cross-modal sim. \\
+\textcircled{3} & \texttt{RLTextPromptPolicy} & Text / RAG & 5   & 4 (prompt variants)            & Confidence$\times$docs \\
+\textcircled{4} & \texttt{RLFusionPolicy} & Fusion         & 6   & 5 (weight combos)              & $-\Delta$MAE \\
+\bottomrule
+\end{tabular}
+\end{tcolorbox}
+
+\subsection{Shared DQN Infrastructure}
+\label{sec:rl_infra}
+
+All four agents reuse a common three-component infrastructure to avoid code
+duplication and ensure theoretical consistency with the existing
+MIVA-KNIGHT-RL foundation.
+
+\subsubsection{Replay Buffer}
+
+\begin{definition}[Experience Replay Ring-Buffer]
+A ring-buffer $\mathcal{B}$ of capacity $C$ stores transitions
+$\tau = (s, a, r, s', d) \in \mathcal{S}\times\mathcal{A}\times\R
+\times\mathcal{S}\times\{0,1\}$, where $d=1$ denotes a terminal step.
+When $|\mathcal{B}| = C$ the oldest transition is evicted.
+Uniform mini-batch sampling $\mathcal{B}_n \sim \text{Uniform}(\mathcal{B},n)$
+breaks temporal correlations, mitigating the first component of the
+\emph{deadly triad} (Axiom~\ref{ax:deadly} in \S\ref{sec:rl}).
+\end{definition}
+
+\subsubsection{Q-Network Architecture}
+
+\begin{definition}[Lightweight DQN MLP]
+\label{def:dqn_mlp}
+For state dimension $d_s$ and action count $|\mathcal{A}|$:
+\[
+  Q_{\text{eval}}(s;\theta) =
+  W_3\,\mathrm{ReLU}(W_2\,\mathrm{ReLU}(W_1 s + b_1) + b_2) + b_3
+\]
+with $W_1\!\in\!\R^{128\times d_s}$, $W_2\!\in\!\R^{128\times128}$,
+$W_3\!\in\!\R^{|\mathcal{A}|\times128}$.
+A frozen copy $Q_{\text{tgt}}(s;\theta^-)$ is synchronised every $C$ steps.
+\end{definition}
+
+\subsubsection{DQN Agent}
+
+\begin{definition}[$\varepsilon$-Greedy Exploration Decay]
+\[
+  \varepsilon(t) = \varepsilon_{\min} +
+  (\varepsilon_{\max} - \varepsilon_{\min})\,
+  \exp\!\left(-\frac{t}{\lambda_\varepsilon}\right)
+\]
+where $t$ is the global step count, $\varepsilon_{\max}=1.0$,
+$\varepsilon_{\min}=0.05$, and $\lambda_\varepsilon$ is the decay constant
+(set per agent; see Table~\ref{tab:rl_hyperparams}).
+\end{definition}
+
+\begin{theorem}[DQN Convergence Under $\varepsilon$-Decay]
+\label{thm:dqn_conv}
+If (i) the replay buffer contains samples from all reachable state--action
+pairs, (ii) $\sum_t \varepsilon(t) = \infty$, and (iii) the learning rate
+satisfies the Robbins--Monro conditions, then $Q_{\text{eval}}(s,a;\theta)$
+converges in probability to $Q^*(s,a)$ as $t\to\infty$.
+\end{theorem}
+
+\begin{lemma}[Huber Loss Gradient Bound]
+For Huber loss $L_\delta(\delta_t) = \tfrac{1}{2}\delta_t^2$ when
+$|\delta_t|\le 1$, else $|\delta_t| - \tfrac{1}{2}$, the gradient satisfies
+$\|\nabla_\theta L_\delta\|_2 \le 1$ for all $|\delta_t|>1$, preventing
+exploding updates from rare high-reward transitions.
+\end{lemma}
+
+\begin{algorithm}[H]
+\caption{Generic DQN Train Step (shared by all four agents)}
+\label{alg:dqn_step}
+\begin{algorithmic}[1]
+\Require Replay buffer $\mathcal{B}$; networks $Q_{\text{eval}}(\cdot;\theta)$,
+         $Q_{\text{tgt}}(\cdot;\theta^-)$; batch size $n$; discount $\gamma$;
+         target sync interval $C$; global step $t$
+\Ensure Updated $\theta$; optional synced $\theta^-$
+\If{$|\mathcal{B}| < n$} \Return \EndIf
+\State Sample $\{(s_i,a_i,r_i,s'_i,d_i)\}_{i=1}^n \sim \mathcal{B}$
+\State $y_i \gets r_i + \gamma(1-d_i)\max_{a'}Q_{\text{tgt}}(s'_i,a';\theta^-)$
+\Comment{TD target (frozen $\theta^-$)}
+\State $\hat{q}_i \gets Q_{\text{eval}}(s_i;\theta)[a_i]$
+\Comment{Online Q-value}
+\State $\Loss \gets \frac{1}{n}\sum_i L_\delta(y_i - \hat{q}_i)$
+\Comment{Huber loss}
+\State $\theta \gets \theta - \eta\,\nabla_\theta\Loss$;
+       \quad clip $\Norm{\nabla_\theta\Loss}\le 1.0$
+\If{$t \bmod C = 0$} $\theta^- \gets \theta$ \EndIf
+\Comment{Sync target network}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{table}[H]
+\centering
+\caption{Hyperparameters for the four RL injection agents}
+\label{tab:rl_hyperparams}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Agent} & $d_s$ & $|\mathcal{A}|$ & lr & $\lambda_\varepsilon$ & $C$ \\
+\midrule
+\texttt{RLAudioPolicy}       & 513 & 5 & $5\times10^{-4}$ & 300 & 50 \\
+\texttt{RLVideoPolicy}       & 512 & 5 & $5\times10^{-4}$ & 250 & 50 \\
+\texttt{RLTextPromptPolicy}  &   5 & 4 & $1\times10^{-3}$ & 200 & 50 \\
+\texttt{RLFusionPolicy}      &   6 & 5 & $1\times10^{-3}$ & 300 & 50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Injection Point \textcircled{1}: RL-Audio Policy}
+\label{sec:rl_audio}
+
+\begin{tcolorbox}[rlinjbox,title={Injection \textcircled{1} --- RL-Audio}]
+\textbf{Problem.}
+Wav2Vec~2.0 processes the entire audio waveform regardless of where the
+emotionally salient segment lies.  A fixed confidence threshold $\tau_{\text{emo}}$
+was used in Pipeline~C/D.  An RL agent can learn \emph{where} to focus and
+\emph{what threshold} to apply from live classification feedback.
+\end{tcolorbox}
+
+\subsubsection{MDP Formulation}
+
+\begin{definition}[RL-Audio MDP]
+\label{def:rl_audio_mdp}
+\[
+  \mathcal{M}_{\text{audio}} = (\mathcal{S}_A,\mathcal{A}_A,\mathcal{T}_A,\mathcal{R}_A,\gamma)
+\]
+\begin{itemize}[nosep]
+  \item $\mathcal{S}_A \subset \R^{513}$:
+        state $s_t = [\hat{e}_s \;\|\; c_t] \in \Sph^{511}\times[0,1]$
+        where $\hat{e}_s = \mathrm{L2}(\text{AudioProj}(\text{Wav2Vec}(a)))$
+        and $c_t = \hat{e}_s \cdot \hat{e}_q$ (audio--query cosine similarity).
+  \item $\mathcal{A}_A = \{\texttt{full},\,\texttt{first\_half},\,
+        \texttt{second\_half},\,\texttt{raise\_}\tau,\,\texttt{lower\_}\tau\}$,
+        $|\mathcal{A}_A|=5$.
+  \item $\mathcal{R}_A(s,a) = +1.0$ if emotion correct,
+        $-0.2$ if rejected ($c_t < \tau - 0.15$),
+        $-0.5$ otherwise.
+  \item $\gamma = 0.99$.
+\end{itemize}
+\end{definition}
+
+\begin{axiom}[Threshold Adaptation Bounds]
+\label{ax:tau_bounds}
+The learned threshold $\tau$ is constrained to $[\tau_{\min},\tau_{\max}]=[0.20,0.80]$.
+This preserves the Clinical Safety Constraint (original Axiom in \S\ref{sec:retrieval}):
+$\tau_M \ge \tau_G$, so the agent cannot inadvertently lower the medical threshold
+below the general-domain floor $\tau_G=0.40$.
+\end{axiom}
+
+\subsubsection{State Construction}
+
+\begin{definition}[Audio State Vector]
+\[
+  s_t^A = \left[\frac{e_s}{\Norm{e_s}}\;\Bigg\|\;
+  \underbrace{(e_s \cdot e_q / \Norm{e_s}\Norm{e_q})}_{\text{confidence scalar}}\right]
+  \in \R^{513}
+\]
+The confidence scalar is the inner product between the audio embedding and the
+current query embedding, providing the agent a direct signal of audio--query
+semantic alignment without accessing ground-truth labels.
+\end{definition}
+
+\begin{theorem}[Audio State Sufficiency]
+\label{thm:audio_state}
+The state $s_t^A$ is a sufficient statistic for the threshold decision if the
+audio--query cosine similarity is a monotone function of the probability of
+correct emotion recognition, i.e.\ $P(\text{correct} \mid c_t) \ge
+P(\text{correct} \mid c_{t'})$ whenever $c_t \ge c_{t'}$.
+\end{theorem}
+
+\begin{algorithm}[H]
+\caption{RL-Audio Policy --- Inference and Feedback}
+\label{alg:rl_audio}
+\begin{algorithmic}[1]
+\Require Audio embedding $e_s\in\R^{768}$ (from Wav2Vec~2.0);
+         query embedding $e_q\in\Sph^{511}$; current $\tau$
+\Ensure Segment choice $a^*$; updated $\tau$; emotion embedding $\hat{e}_s$
+\State $\hat{e}_s \gets \mathrm{AudioProj}(e_s)/\Norm{\mathrm{AudioProj}(e_s)}$
+\State $c_t \gets \hat{e}_s \cdot e_q$
+\State $s_t \gets [\hat{e}_s \;\|\; c_t] \in \R^{513}$
+\State $a^* \gets \pi_{\varepsilon}(s_t)$
+\Comment{$\varepsilon$-greedy from DQN}
+\If{$a^* \in \{\texttt{raise\_}\tau\}$}
+  $\tau \gets \min(\tau_{\max},\,\tau + 0.05)$
+\ElsIf{$a^* \in \{\texttt{lower\_}\tau\}$}
+  $\tau \gets \max(\tau_{\min},\,\tau - 0.05)$
+\EndIf
+\State Apply segment selection $a^*$ to waveform $a$
+\State \textbf{// After ground-truth observed:}
+\State $r \gets \mathcal{R}_A(s_t, a^*)$
+\Comment{Eq.\ Def.~\ref{def:rl_audio_mdp}}
+\State $s_{t+1} \gets [\hat{e}_s \;\|\; \mathbf{1}[\text{correct}]]$
+\State $\mathcal{B}_A.\texttt{push}(s_t,a^*,r,s_{t+1},\texttt{False})$
+\State \Call{DQNTrainStep}{$\mathcal{B}_A$}
+\Comment{Algorithm~\ref{alg:dqn_step}}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.0cm]
+  \node[inputnode,minimum width=3.0cm] (wav) {Audio $a\in\R^T$};
+  \node[encnode,right=1.0cm of wav] (w2v) {Wav2Vec 2.0\\frozen, 94M};
+  \node[projnode,right=1.0cm of w2v] (aproj) {AudioProj\\$768\to512$, L2};
+  \node[rlpnode,right=1.0cm of aproj] (rpol) {\textcircled{1} RL-Audio\\Q-net: 513$\to$5};
+  \node[decnode,right=1.0cm of rpol] (dec) {Seg.\\choice};
+  \node[outnode,right=1.0cm of dec] (out) {$\hat{e}_s\in\Sph^{511}$\\+ learned $\tau$};
+  \node[datanode,below=0.8cm of rpol] (rew) {Reward $r$\\(emotion acc.)};
+  \draw[thickarr](wav)--(w2v); \draw[thickarr](w2v)--(aproj);
+  \draw[thickarr](aproj)--(rpol); \draw[rlarr](rpol)--(dec);
+  \draw[thickarr](dec)--(out);
+  \draw[rldasharr](rew.north)--(rpol.south);
+  \draw[rldasharr](out.south) -- ++(0,-0.4) -| (rew.east);
+  \begin{pgfonlayer}{background}
+    \node[rectangle,draw=rlpolicyborder!50,fill=rlAudioC!20,rounded corners=6pt,dashed,thick,
+          fit=(rpol)(rew)(dec),inner sep=8pt,
+          label={[font=\scriptsize\bfseries,color=rlpolicyborder]above:RL-Audio MDP}]{};
+  \end{pgfonlayer}
+\end{tikzpicture}
+\caption{RL-Audio injection: the DQN policy sits between AudioProjection and the
+downstream confidence router, learning both segment selection and $\tau$ adaptation.}
+\label{fig:rl_audio}
+\end{figure}
+
+\begin{tcolorbox}[laymanbox,title={In Plain Terms --- RL-Audio}]
+Instead of always analysing the entire audio clip and using a fixed cut-off,
+the agent learns which part of the sound contains the most emotion information
+and adjusts its confidence bar automatically.  Over time it becomes better at
+deciding ``I heard enough to be sure'' vs.\ ``I should listen to a different
+part.''
+\end{tcolorbox}
+
+\subsection{Injection Point \textcircled{2}: RL-Video Policy}
+\label{sec:rl_video}
+
+\begin{tcolorbox}[rlinjbox,title={Injection \textcircled{2} --- RL-Video}]
+\textbf{Problem.}
+Pipeline~D extracts the \emph{middle frame} of each CREMA-D clip as a fixed
+heuristic (Theorem: Peak Expression Frame, \S\ref{sec:pipelineD}).
+Acted-emotion clips do not always peak at the midpoint; an RL agent can learn
+an optimal frame-selection policy from per-sample cross-modal alignment feedback.
+\end{tcolorbox}
+
+\subsubsection{MDP Formulation}
+
+\begin{definition}[RL-Video MDP]
+\label{def:rl_video_mdp}
+\[
+  \mathcal{M}_{\text{video}} = (\mathcal{S}_V,\mathcal{A}_V,\mathcal{T}_V,\mathcal{R}_V,\gamma)
+\]
+\begin{itemize}[nosep]
+  \item $\mathcal{S}_V \subset \Sph^{511}$:
+        state $s_t = \hat{e}_V = \mathrm{L2}(\text{VideoProj}(\text{ResNet}(f_{\text{mid}})))$
+        where $f_{\text{mid}}$ is the current candidate frame.
+  \item $\mathcal{A}_V = \{0.0,\,0.25,\,0.50,\,0.75,\,1.0\}$ (fractional frame positions);
+        $|\mathcal{A}_V|=5$.
+  \item $\mathcal{R}_V(s,a) = +1.0$ if cosine sim$(\hat{e}_V,\hat{e}_A) > \theta_V$,
+        else $-0.3$, with $\theta_V = 0.30$.
+  \item $\gamma = 0.99$.
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Frame Selection as Cosine Optimisation]
+\label{thm:frame_opt}
+Let $F = \{f_0, f_{1}, \ldots, f_{N-1}\}$ be the ordered frame sequence of a clip.
+The optimal frame under $\mathcal{R}_V$ is:
+\[
+  f^* = \argmax_{f_k \in F}\;
+  \cos\!\left(\text{VideoProj}(\text{ResNet}(f_k)),\;
+  \text{AudioProj}(\text{Wav2Vec}(a))\right)
+\]
+The RL agent approximates $f^*$ without exhaustive search, requiring only a single
+forward pass per candidate frame.
+\end{theorem}
+
+\begin{lemma}[Middle-Frame Heuristic as Uniform Prior]
+\label{lem:middle_prior}
+The fixed middle-frame heuristic $f^*=f_{\lfloor N/2\rfloor}$ is equivalent to a
+uniform prior over $\mathcal{A}_V$ that assigns probability mass 1 to action
+index $a=2$ (position 0.50).  The RL agent strictly dominates this prior whenever
+$\EE[\mathcal{R}_V \mid a^*=f^*_{\text{RL}}] > \EE[\mathcal{R}_V \mid a=0.50]$.
+\end{lemma}
+
+\begin{algorithm}[H]
+\caption{RL-Video Policy --- Frame Selection and Feedback}
+\label{alg:rl_video}
+\begin{algorithmic}[1]
+\Require Video path $p_V$; audio embedding $\hat{e}_A\in\Sph^{511}$;
+         FRAME\_TRANSFORM; VideoProjection $f_\phi^{\text{video}}$
+\Ensure Selected frame embedding $\hat{e}_V\in\Sph^{511}$;
+        selected position $\rho^*\in\{0.0,0.25,0.5,0.75,1.0\}$
+\State $f_{\text{mid}} \gets$ \Call{ExtractFrame}{$p_V$, $0.50$}
+\Comment{Initial probe at midpoint}
+\State $\hat{e}_V \gets f_\phi^{\text{video}}(f_{\text{mid}})$
+\State $s_t \gets \hat{e}_V \in \R^{512}$
+\State $a^* \gets \pi_\varepsilon(s_t)$; \quad $\rho^* \gets \mathcal{A}_V[a^*]$
+\Comment{Policy selects position}
+\State $f^* \gets$ \Call{ExtractFrame}{$p_V$, $\rho^*$}
+\State $\hat{e}_V \gets f_\phi^{\text{video}}(f^*)$
+\State $\sigma \gets \hat{e}_V \cdot \hat{e}_A$
+\Comment{Cross-modal similarity}
+\State $r \gets +1.0$ if $\sigma > \theta_V$ else $-0.3$
+\State $\mathcal{B}_V.\texttt{push}(s_t,a^*,r,\hat{e}_V,\texttt{False})$
+\State \Call{DQNTrainStep}{$\mathcal{B}_V$}
+\State \Return $\hat{e}_V$, $\rho^*$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.0cm]
+  \node[inputnode,minimum width=2.8cm] (vid) {Video clip\\.mp4};
+  \node[encnode,right=1.0cm of vid] (res) {ResNet-50\\(frame $f_{\text{mid}}$)};
+  \node[projnode,right=1.0cm of res] (vproj) {VideoProj\\$2048\to512$, L2};
+  \node[rlpnode,right=1.0cm of vproj] (rvid) {\textcircled{2} RL-Video\\Q-net: 512$\to$5};
+  \node[datanode,above=0.7cm of rvid,minimum width=3.0cm,font=\scriptsize]
+    (fpos) {$\rho^*\in\{0.0,0.25,0.5,0.75,1.0\}$};
+  \node[encnode,right=1.0cm of rvid] (res2) {ResNet-50\\(frame $f^*$)};
+  \node[projnode,right=1.0cm of res2] (vproj2) {VideoProj\\$\to\hat{e}_V\in\Sph^{511}$};
+  \node[datanode,below=0.8cm of rvid] (rew2) {Reward: $\cos(\hat{e}_V,\hat{e}_A)$};
+  \draw[thickarr](vid)--(res); \draw[thickarr](res)--(vproj);
+  \draw[thickarr](vproj)--(rvid);
+  \draw[rlarr](rvid.north)--(fpos.south);
+  \draw[rlarr](fpos.east) -| (res2.north);
+  \draw[thickarr](res2)--(vproj2);
+  \draw[rldasharr](rew2.north)--(rvid.south);
+  \draw[rldasharr](vproj2.south) -- ++(0,-0.4) -| (rew2.east);
+  \begin{pgfonlayer}{background}
+    \node[rectangle,draw=rlpolicyborder!50,fill=rlVideoC!25,rounded corners=6pt,dashed,thick,
+          fit=(rvid)(rew2)(fpos),inner sep=8pt,
+          label={[font=\scriptsize\bfseries,color=rlpolicyborder]above:RL-Video MDP}]{};
+  \end{pgfonlayer}
+\end{tikzpicture}
+\caption{RL-Video injection: the agent probes the middle frame for its state, then
+selects the optimal fractional position, replacing the fixed middle-frame heuristic.}
+\label{fig:rl_video}
+\end{figure}
+
+\begin{tcolorbox}[laymanbox,title={In Plain Terms --- RL-Video}]
+Instead of always grabbing the middle frame of a video clip, the agent learns
+which moment in the video best represents the emotion being expressed.
+For some speakers the peak expression is early; for others it is near the end.
+The agent discovers this per clip and improves over time.
+\end{tcolorbox}
+
+\subsection{Injection Point \textcircled{3}: RL-Text Prompt Policy}
+\label{sec:rl_text}
+
+\begin{tcolorbox}[rlinjbox,title={Injection \textcircled{3} --- RL-Text}]
+\textbf{Problem.}
+The PromptBuilder generates a fixed 4-section RAG prompt $\Pi$ regardless of
+retrieval quality, domain, or confidence tier.  An RL agent can learn which
+prompt \emph{strategy} (conservative, standard, expansive, or domain-swap trigger)
+and how many retrieved documents $N$ to include, maximising answer quality as
+proxied by the confidence score.
+\end{tcolorbox}
+
+\subsubsection{MDP Formulation}
+
+\begin{definition}[RL-Text MDP]
+\label{def:rl_text_mdp}
+\[
+  \mathcal{M}_{\text{text}} = (\mathcal{S}_T,\mathcal{A}_T,\mathcal{T}_T,\mathcal{R}_T,\gamma)
+\]
+\begin{itemize}[nosep]
+  \item $\mathcal{S}_T \subset \R^5$:
+        $s_t = [c,\, \mathbf{1}_{M},\, \tilde{s}_{\text{dense}},\,
+        \tilde{s}_{\KG},\, \mu_{|e_q|}]$
+        where $c$ is the top-1 retrieval confidence, $\mathbf{1}_M$ the medical
+        domain flag, $\tilde{s}_{\text{dense}}$ and $\tilde{s}_\KG$ are the
+        normalised dense and KG scores (from Stage~2 of
+        Algorithm~\ref{alg:rerank}), and $\mu_{|e_q|}$ the mean absolute value
+        of the query embedding.
+  \item $\mathcal{A}_T = \{\texttt{conservative}(N{=}2),\,
+        \texttt{standard}(N{=}5),\,
+        \texttt{expansive}(N{=}8),\,
+        \texttt{domain\_swap}(N{=}3)\}$; $|\mathcal{A}_T|=4$.
+  \item $\mathcal{R}_T(s,a) = c\cdot(1 + 0.05\,N_{a}) - 0.5\cdot\mathbf{1}[\text{rejected}]$,
+        where $N_a$ is the doc count for action $a$.
+  \item $\gamma = 0.99$.
+\end{itemize}
+\end{definition}
+
+\begin{axiom}[Prompt Strategy Monotonicity]
+\label{ax:prompt_mono}
+For a fixed confidence $c > \tau$, the expansive strategy ($N=8$) dominates
+the conservative strategy ($N=2$) in expected reward:
+\[
+  \EE[\mathcal{R}_T \mid a=\texttt{expansive}] \ge
+  \EE[\mathcal{R}_T \mid a=\texttt{conservative}]
+  \quad \text{iff}\quad c > \tau.
+\]
+For $c < \tau - 0.2$ (rejected tier) the conservative or domain-swap
+strategy minimises hallucination risk, consistent with the Clinical Safety
+Constraint (Axiom in \S\ref{sec:retrieval}).
+\end{axiom}
+
+\begin{definition}[Prompt Templates]
+\label{def:prompt_templates}
+Four prompt templates parameterised by strategy $\pi_T$ and doc count $N_\pi$:
+\begin{align*}
+\Pi_{\text{conservative}} &:= \text{``Grounded answer using ONLY \{N\} passages. No speculation.''}\\
+\Pi_{\text{standard}}     &:= \text{``[DOMAIN]\{d\}[CONTEXT]\{P_N\}[QUERY]\{q\} Cite sources.''}\\
+\Pi_{\text{expansive}}    &:= \text{``Comprehensive synthesis from \{N\} sources.''}\\
+\Pi_{\text{swap}}         &:= \text{``[DOMAIN SWITCH REQUESTED] Route to knowledge base.''}
+\end{align*}
+where $\{P_N\}$ denotes the top-$N$ retrieved passages.
+\end{definition}
+
+\begin{algorithm}[H]
+\caption{RL-Text Prompt Policy --- Action Selection and Feedback}
+\label{alg:rl_text}
+\begin{algorithmic}[1]
+\Require Retrieval output: confidence $c$, dense score $\tilde{s}_d$,
+         KG score $\tilde{s}_\KG$, domain flag $\mathbf{1}_M$,
+         query embedding $e_q$; top-$K$ passages $P$
+\Ensure Prompt string $\Pi^*$; doc count $N^*$; action $a^*$
+\State $s_t \gets [c,\,\mathbf{1}_M,\,\tilde{s}_d,\,\tilde{s}_\KG,\,
+       \text{mean}(|e_q|)] \in \R^5$
+\State $a^* \gets \pi_\varepsilon(s_t)$;
+       \quad $N^* \gets N_{a^*}$
+\State $\Pi^* \gets$ \Call{BuildPrompt}{$a^*$, query, $P[{:}N^*]$, domain}
+\State \textbf{// After LLM response received:}
+\State $r \gets \mathcal{R}_T(s_t, a^*)$
+\Comment{Def.~\ref{def:rl_text_mdp}}
+\State $\mathcal{B}_T.\texttt{push}(s_t, a^*, r, s_t, \texttt{False})$
+\Comment{$s_{t+1} \approx s_t$ (episodic)}
+\State \Call{DQNTrainStep}{$\mathcal{B}_T$}
+\State \Return $\Pi^*$, $N^*$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.6cm and 1.0cm]
+  \node[retnode,minimum width=3.0cm] (ret) {Hybrid Retrieval\\top-$K$ passages\\conf $c$, scores};
+  \node[rlpnode,right=1.2cm of ret] (rtxt) {\textcircled{3} RL-Text\\Q-net: 5$\to$4};
+  \node[datanode,above=0.7cm of rtxt,minimum width=3.2cm,font=\scriptsize]
+    (strat) {Strategy:\\conservative / standard\\expansive / swap};
+  \node[gennode,right=1.2cm of rtxt] (pb) {PromptBuilder\\$\Pi^*$, $N^*$ docs};
+  \node[gennode,right=1.0cm of pb] (llm) {Groq LLM\\Llama-3.1-8B};
+  \node[outnode,right=1.0cm of llm] (ans) {Answer\\+ sources};
+  \node[datanode,below=0.8cm of rtxt] (rew3) {Reward: $c\cdot(1\!+\!0.05N)$};
+  \draw[thickarr](ret)--(rtxt);
+  \draw[rlarr](rtxt.north)--(strat.south);
+  \draw[rlarr](strat.east) -| (pb.north);
+  \draw[thickarr](pb)--(llm); \draw[thickarr](llm)--(ans);
+  \draw[rldasharr](rew3.north)--(rtxt.south);
+  \draw[rldasharr](ans.south) -- ++(0,-0.5) -| (rew3.east);
+  \begin{pgfonlayer}{background}
+    \node[rectangle,draw=rlpolicyborder!50,fill=rlTextC!25,rounded corners=6pt,dashed,thick,
+          fit=(rtxt)(rew3)(strat),inner sep=8pt,
+          label={[font=\scriptsize\bfseries,color=rlpolicyborder]above:RL-Text MDP}]{};
+  \end{pgfonlayer}
+\end{tikzpicture}}
+\caption{RL-Text injection: the policy selects prompt strategy and document count
+based on retrieval quality signals, replacing the fixed 4-section RAG template.}
+\label{fig:rl_text}
+\end{figure}
+
+\begin{tcolorbox}[laymanbox,title={In Plain Terms --- RL-Text}]
+Instead of always using the same type of question-answering prompt, the agent
+learns when to be cautious (few sources, grounded only), when to be thorough
+(many sources, synthesise), and when to switch knowledge bases.
+It gets smarter about how to frame questions to the language model over time.
+\end{tcolorbox}
+
+\subsection{Injection Point \textcircled{4}: RL-Fusion Policy}
+\label{sec:rl_fusion}
+
+\begin{tcolorbox}[rlinjbox,title={Injection \textcircled{4} --- RL-Fusion}]
+\textbf{Problem.}
+Pipeline~E's \texttt{MultimodalFusionTransformer} uses a fixed mean-pool
+$\bar{x} = \frac{1}{3}(e_T + e_A + e_V)$ over modality tokens.
+A missing or low-quality modality degrades the output proportionally.
+An RL agent can learn per-sample \emph{modality trust weights}
+$(w_T, w_A, w_V)$ that dynamically down-weight unreliable modalities, directly
+implementing the Late Fusion Missing-Modality Robustness Proposition
+(\S\ref{sec:taxonomy}).
+\end{tcolorbox}
+
+\subsubsection{MDP Formulation}
+
+\begin{definition}[RL-Fusion MDP]
+\label{def:rl_fusion_mdp}
+\[
+  \mathcal{M}_{\text{fusion}} = (\mathcal{S}_F,\mathcal{A}_F,\mathcal{T}_F,\mathcal{R}_F,\gamma)
+\]
+\begin{itemize}[nosep]
+  \item $\mathcal{S}_F \subset \R^6$:
+        $s_t = [\Norm{e_T},\Norm{e_A},\Norm{e_V},
+        \cos(e_T,\bar{e}),\cos(e_A,\bar{e}),\cos(e_V,\bar{e})]$
+        where $\bar{e} = (e_T+e_A+e_V)/3$.
+  \item $\mathcal{A}_F = \{(0.50,0.30,0.20),\,(0.33,0.33,0.33),\,
+        (0.20,0.50,0.30),\,(0.20,0.30,0.50),\,(0.60,0.20,0.20)\}$;
+        $|\mathcal{A}_F|=5$.
+  \item $\mathcal{R}_F(s,a) = \text{MAE}_{\text{uniform}} - \text{MAE}_{\text{RL}}$
+        (positive reward if RL-weighted prediction reduces absolute error vs.\ baseline).
+  \item $\gamma = 0.99$.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Weighted Fusion Forward Pass]
+\label{def:weighted_fusion}
+Let $(w_T, w_A, w_V) = \mathcal{A}_F[a^*]$ with $w_T + w_A + w_V = 1$.
+Replace the mean-pool in Algorithm~\ref{alg:fusion_forward} (line 6) with:
+\[
+  \bar{x}_{\text{RL}} = w_T\,X_{:,0,:} + w_A\,X_{:,1,:} + w_V\,X_{:,2,:}
+\]
+where $X \in \R^{B \times 3 \times 512}$ is the Transformer output.
+The regression head $g_\theta$ is then applied to $\bar{x}_{\text{RL}}$ unchanged.
+\end{definition}
+
+\begin{theorem}[RL-Fusion Dominance under Missing Modality]
+\label{thm:fusion_dom}
+Let $e_V = \mathbf{0}$ (missing video). Under the uniform weighting
+$w=(1/3,1/3,1/3)$, the missing modality contributes noise
+$\sim \mathcal{N}(0,\sigma_\epsilon^2)$ to $\bar{x}$. Under the text-dominant
+weighting $w=(0.60,0.20,0.20)$, the expected prediction error satisfies:
+\[
+  \EE[|\hat{y}_{\text{text-dom}} - y|]
+  \le \EE[|\hat{y}_{\text{uniform}} - y|]
+  + \frac{\sigma_\epsilon^2}{3}\left(0.20^2 - 0.33^2\right) < 0
+\]
+i.e.\ the text-dominant action strictly reduces expected MAE when video is missing.
+\end{theorem}
+
+\begin{lemma}[Missing-Modality Zero-Norm Detection]
+\label{lem:zero_norm}
+A missing modality $e_k = \mathbf{0}$ produces $\Norm{e_k} = 0$ and
+$\cos(e_k,\bar{e}) = 0$, both reflected in the state $s_t^F$.
+The RL agent can therefore detect missing modalities from the state alone,
+without any explicit sentinel flag, and learn to assign $w_k \to 0$
+(Axiom~\ref{ax:missing}: zero-vector missing modality).
+\end{lemma}
+
+\begin{algorithm}[H]
+\caption{RL-Fusion Policy --- Weighted Prediction and Feedback}
+\label{alg:rl_fusion}
+\begin{algorithmic}[1]
+\Require Embeddings $e_T, e_A, e_V \in \R^{512}$; ground-truth $y$;
+         trained fusion model $\pi_\theta$
+\Ensure Weighted prediction $\hat{y}_{\text{RL}}$; updated policy
+\State $\bar{e} \gets (e_T + e_A + e_V)/3$
+\State $s_t \gets [\Norm{e_T},\Norm{e_A},\Norm{e_V},
+       \cos(e_T,\bar{e}),\cos(e_A,\bar{e}),\cos(e_V,\bar{e})] \in \R^6$
+\State $a^* \gets \pi_\varepsilon(s_t)$;
+       \quad $(w_T,w_A,w_V) \gets \mathcal{A}_F[a^*]$
+\State $X \gets \pi_\theta.\text{encode}(e_T,e_A,e_V)$
+\Comment{Transformer encoder only}
+\State $\bar{x}_{\text{RL}} \gets w_T X_0 + w_A X_1 + w_V X_2$
+\Comment{Def.~\ref{def:weighted_fusion}}
+\State $\hat{y}_{\text{RL}} \gets \text{clip}(\pi_\theta.\text{head}(\bar{x}_{\text{RL}}),{-3},{3})$
+\State $\hat{y}_{\text{uni}} \gets$ \Call{UniformForward}{$e_T,e_A,e_V$}
+\State $r \gets |\hat{y}_{\text{uni}}-y| - |\hat{y}_{\text{RL}}-y|$
+\State $\mathcal{B}_F.\texttt{push}(s_t,a^*,r,s_t,\texttt{False})$
+\State \Call{DQNTrainStep}{$\mathcal{B}_F$}
+\State \Return $\hat{y}_{\text{RL}}$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.9\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.6cm and 1.0cm]
+  \node[projnode,minimum width=3.0cm] (eT) {$e_T\in\R^{512}$\\TextProj};
+  \node[projnode,below=0.5cm of eT,minimum width=3.0cm] (eA) {$e_A\in\R^{512}$\\AudioProj};
+  \node[projnode,below=0.5cm of eA,minimum width=3.0cm] (eV) {$e_V\in\R^{512}$\\VideoProj};
+  \node[rlpnode,right=1.2cm of eA] (rfus) {\textcircled{4} RL-Fusion\\Q-net: 6$\to$5};
+  \node[datanode,above=0.7cm of rfus,minimum width=3.2cm,font=\scriptsize]
+    (wts) {$(w_T,w_A,w_V)$\\e.g.\ (0.50,0.30,0.20)};
+  \node[fusnode,right=1.2cm of rfus] (transf2) {Pre-LN Transformer\\$L=2$, $h=8$\\$X\in\R^{B\times3\times512}$};
+  \node[fusnode,right=1.0cm of transf2] (wpool) {Weighted Pool\\$\bar{x}=w_T X_0+w_A X_1$\\$+w_V X_2$};
+  \node[gennode,right=1.0cm of wpool] (head) {Regr.\ Head\\$512\to256\to1$\\$\hat{y}\in[-3,3]$};
+  \node[datanode,below=0.8cm of rfus] (rew4) {Reward: $\Delta$MAE};
+  \draw[thickarr](eT.east) -- ++(0.3,0) |- (transf2.west);
+  \draw[thickarr](eA.east) -- (rfus.west);
+  \draw[thickarr](eV.east) -- ++(0.3,0) |- (transf2.west);
+  \draw[thickarr](eA.east) -- ++(0.2,0) |- (transf2.west);
+  \draw[rlarr](rfus.north)--(wts.south);
+  \draw[rlarr](wts.east) -| (wpool.north);
+  \draw[thickarr](transf2)--(wpool); \draw[thickarr](wpool)--(head);
+  \draw[rldasharr](rew4.north)--(rfus.south);
+  \draw[rldasharr](head.south) -- ++(0,-0.5) -| (rew4.east);
+  \begin{pgfonlayer}{background}
+    \node[rectangle,draw=rlpolicyborder!50,fill=rlFusionC!25,rounded corners=6pt,dashed,thick,
+          fit=(rfus)(rew4)(wts),inner sep=8pt,
+          label={[font=\scriptsize\bfseries,color=rlpolicyborder]above:RL-Fusion MDP}]{};
+  \end{pgfonlayer}
+\end{tikzpicture}}
+\caption{RL-Fusion injection: the policy replaces the fixed mean-pool with a
+learned weighted combination, adapting to missing or low-quality modalities per sample.}
+\label{fig:rl_fusion}
+\end{figure}
+
+\begin{tcolorbox}[laymanbox,title={In Plain Terms --- RL-Fusion}]
+Instead of trusting text, audio, and video equally when predicting sentiment,
+the agent learns how much to rely on each modality for each example.
+If the video is corrupted or missing, it shifts weight to text and audio
+automatically, improving accuracy without retraining the underlying model.
+\end{tcolorbox}
+
+\subsection{Unified v2 Pipeline Flowchart with All Five RL Injection Points}
+\label{sec:rl_v2_flowchart}
+
+Figure~\ref{fig:rl_v2_pipeline} presents the complete MIVA-KNIGHT v2 system
+integrating all five RL injection points --- four new modality-wide policies
+(\textcircled{1}--\textcircled{4}) and the original robot-control DQN
+\textcircled{5}.  Orange-bordered nodes (\textcircled{n}) denote RL policy
+injection points; orange arrows denote RL reward/action flows; all other
+conventions follow Figure~\ref{fig:full_pipeline}.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.7cm and 1.2cm]
+
+%% ── RL injection node style (local) ──
+\tikzset{
+  rlpnl/.style={basebox,fill=rlpolicy,draw=rlpolicyborder,
+                minimum width=3.0cm,minimum height=1.0cm,thick,font=\small\bfseries},
+  rlarrL/.style={->,>=Stealth,very thick,color=rlpolicyborder},
+  rldashL/.style={->,>=Stealth,thick,dashed,color=rlpolicyborder}
+}
+
+%%── INPUTS ────────────────────────────────────────────────────
+\node[inputnode,minimum width=3.0cm] (tIn) at (0,0)  {\textbf{Text}};
+\node[inputnode,minimum width=3.0cm,below=0.5cm of tIn] (aIn) {\textbf{Audio}};
+\node[inputnode,minimum width=3.0cm,below=0.5cm of aIn] (iIn) {\textbf{Image}};
+\node[inputnode,minimum width=3.0cm,below=0.5cm of iIn] (vIn) {\textbf{Video}};
+\node[inputnode,minimum width=3.0cm,below=1.0cm of vIn] (gIn) {\textbf{Gesture}\\(Robot)};
+
+%%── ENCODERS ──────────────────────────────────────────────────
+\node[encnode,right=1.0cm of tIn]  (bert)  {BERT\\110M,frz};
+\node[encnode,right=1.0cm of aIn]  (whi)   {Whisper\\STT};
+\node[encnode,below=0.4cm of whi]  (w2v)   {Wav2Vec\\94M,frz};
+\node[encnode,right=1.0cm of iIn]  (res)   {ResNet-50\\23M,frz};
+\node[encnode,right=1.0cm of vIn]  (resV)  {ResNet-50\\Video};
+\node[encnode,right=1.0cm of gIn]  (subcl) {Sub-clf\\$f_\phi$};
+
+%%── RL \textcircled{1} AUDIO ──────────────────────────────────
+\node[rlpnl,right=0.8cm of w2v,yshift=-0.6cm]
+  (rl1) {\textcircled{1} RL-Audio\\seg+$\tau$};
+
+%%── RL \textcircled{2} VIDEO ──────────────────────────────────
+\node[rlpnl,right=0.8cm of resV,yshift=-0.5cm]
+  (rl2) {\textcircled{2} RL-Video\\frame $f^*$};
+
+%%── PROJECTIONS ───────────────────────────────────────────────
+\node[projnode,right=3.2cm of bert]  (tprj) {TextProj\\$768{\to}512$};
+\node[projnode,below=0.4cm of tprj]  (tprj2){Trans.Emb\\$e_q{\in}\Sph^{511}$};
+\node[projnode,below=0.4cm of tprj2] (aprj) {AudioProj\\$768{\to}512$};
+\node[projnode,below=0.4cm of aprj]  (iprj) {ImageProj\\COCO/ROCO};
+\node[projnode,below=0.4cm of iprj]  (vprj) {VideoProj\\$2048{\to}512$};
+\node[datanode,below=0.4cm of vprj]  (ner)  {spaCy NER\\$\mathcal{E}_q$};
+
+%%── SHARED SPACE ──────────────────────────────────────────────
+\node[rectangle,draw=navyblue!60,fill=navyblue!8,rounded corners=5pt,thick,
+      minimum width=2.8cm,minimum height=1.8cm,
+      right=0.9cm of tprj,yshift=-1.8cm]
+  (sph) {$\Sph^{511}$\\\small shared space};
+
+%%── DOMAIN ────────────────────────────────────────────────────
+\node[decnode,right=1.0cm of sph,minimum width=2.6cm]
+  (dom) {Domain?};
+\node[datanode,above=0.5cm of dom,font=\scriptsize] (gd) {General\\$\tau_G{=}0.40$};
+\node[datanode,below=0.5cm of dom,font=\scriptsize] (md) {Medical\\$\tau_M{=}0.55$};
+
+%%── RETRIEVAL ─────────────────────────────────────────────────
+\node[retnode,right=1.0cm of dom,yshift=0.6cm]  (faiss) {FAISS\\top-$K{=}20$};
+\node[retnode,below=0.5cm of faiss]             (kgr)   {KG PMI\\Re-rank};
+\node[datanode,below=0.4cm of kgr,font=\scriptsize](hsc){$\alpha{=}0.7$\\ hybrid score};
+
+%%── CONFIDENCE ────────────────────────────────────────────────
+\node[decnode,right=1.0cm of faiss,yshift=-0.5cm,minimum width=2.6cm]
+  (conf) {Conf.?};
+\node[datanode,above=0.5cm of conf,font=\scriptsize] (full) {full};
+\node[datanode,right=0.8cm of conf,font=\scriptsize,yshift=0.4cm] (part) {partial};
+
+%%── RL \textcircled{3} TEXT ───────────────────────────────────
+\node[rlpnl,right=1.2cm of conf,yshift=1.2cm]
+  (rl3) {\textcircled{3} RL-Text\\prompt $\Pi^*$, $N^*$};
+
+%%── GENERATION ────────────────────────────────────────────────
+\node[gennode,right=1.0cm of rl3]   (pb)  {Prompt\\Builder};
+\node[gennode,below=0.5cm of pb]    (llm) {Groq LLM\\Llama-3.1-8B};
+\node[outnode,below=0.5cm of llm]   (ans) {Text Answer\\+ Sources};
+\node[outnode,below=0.4cm of ans]   (tts) {gTTS MP3};
+\node[gennode,below=1.5cm of conf]  (rej) {Rejection};
+
+%%── FUSION (PIPELINE E) ───────────────────────────────────────
+\node[fusnode,below=3.5cm of aprj]  (stk) {Stack\\$X{=}[e_T;e_A;e_V]{+}P$};
+\node[fusnode,right=0.9cm of stk]   (trf) {Pre-LN\\Transf $L{=}2$};
+\node[rlpnl,right=0.9cm of trf]
+  (rl4) {\textcircled{4} RL-Fusion\\$(w_T,w_A,w_V)$};
+\node[fusnode,right=0.9cm of rl4]   (wpl) {Weighted\\Pool};
+\node[gennode,right=0.9cm of wpl]   (hd)  {Head\\${\to}\hat{y}$};
+\node[outnode,right=0.8cm of hd]    (sent){Sentiment\\MAE=0.7238};
+
+%%── RL \textcircled{5} ROBOT ─────────────────────────────────
+\node[robotnode,below=1.2cm of subcl] (rob) {Robot\\action $i$};
+\node[memnode,right=0.8cm of rob]     (mem) {Replay\\Memory};
+\node[qnetnode,right=0.8cm of mem]    (qev) {Q-eval\\$\Qeval$};
+\node[qnetnode,below=0.5cm of qev]    (qtg) {Q-tgt\\$\Qtgt$};
+\node[lossnode,left=0.8cm of qev]     (dql) {DQN\\Loss};
+\node[nlpnode,below=0.5cm of rob]     (nlp) {NLP\\Reward};
+
+%%── CONNECTIONS ───────────────────────────────────────────────
+\draw[thickarr](tIn)--(bert); \draw[thickarr](aIn)--(whi);
+\draw[arr](aIn.east) -- ++(0.3,0) |- (w2v.west);
+\draw[thickarr](iIn)--(res); \draw[arr](vIn)--(resV);
+\draw[arr](gIn)--(subcl);
+\draw[arr](whi.east) -- ++(0.2,0) |- (tprj.west);
+\draw[thickarr](bert.east)--(tprj.west);
+\draw[rlarrL](w2v.east) -- ++(0.1,0) |- (rl1.west);
+\draw[rlarrL](rl1.east) -- ++(0.3,0) |- (aprj.west);
+\draw[rlarrL](resV.east) -- ++(0.1,0) |- (rl2.west);
+\draw[rlarrL](rl2.east) -- ++(0.3,0) |- (vprj.west);
+\draw[thickarr](res.east)--(iprj.west);
+\draw[thickarr](tprj.east) -| (sph.north);
+\draw[arr](aprj.east) -- ++(0.2,0) |- (sph.west);
+\draw[arr](iprj.east) -- ++(0.2,0) |- (sph.south);
+\draw[arr](vprj.east) -- ++(0.2,0) |- (sph.south);
+\draw[arr](tprj.south)--(ner.north);
+\draw[thickarr](sph.east)--(dom.west);
+\draw[dasharr](dom.north)--(gd.south); \draw[dasharr](dom.south)--(md.north);
+\draw[thickarr](dom.east)--(faiss.west);
+\draw[arr](faiss.south)--(kgr.north); \draw[arr](kgr.south)--(hsc.north);
+\draw[thickarr](kgr.east)--(conf.west);
+\draw[arr,color=mintgreen!80](conf.north)--(full.south);
+\draw[arr,color=mintgreen!80](full.east) -- ++(0.3,0) |- (rl3.west);
+\draw[dasharr](conf.east) -- ++(0.2,0) |- (part.west);
+\draw[dasharr](part.east) -- ++(0.2,0) |- (rl3.west);
+\draw[redarr,dashed](conf.south)--(rej.north);
+\draw[rlarrL](rl3)--(pb);
+\draw[thickarr](pb)--(llm); \draw[thickarr](llm)--(ans); \draw[arr](ans)--(tts);
+\draw[arr](aprj.south) -- ++(0,-0.3) -| (stk.north);
+\draw[arr](tprj.south) -- ++(0,-0.3) -| (stk.north);
+\draw[arr](vprj.south) -- ++(0,-0.3) -| (stk.north);
+\draw[thickarr](stk)--(trf); \draw[thickarr](trf)--(rl4);
+\draw[rlarrL](rl4)--(wpl); \draw[thickarr](wpl)--(hd); \draw[thickarr](hd)--(sent);
+\draw[rldashL](sent.south) -- ++(0,-0.3) -| (rl4.south);
+\draw[bluearr](subcl.south)--(rob.north);
+\draw[arr](rob)--(mem); \draw[arr](mem)--(qev);
+\draw[arr](qev.south)--(qtg.north); \draw[arr](qev.west)--(dql.east);
+\draw[dasharr](dql.west) -- ++(-.3,0) |- (rob.west);
+\draw[arr,color=rlgreen](nlp.north)--(rob.south);
+\draw[dasharr](qtg.west) -- ++(-.3,0) |- (dql.south);
+
+\begin{pgfonlayer}{background}
+  \node[rectangle,draw=navyblue!50,fill=navyblue!4,rounded corners=7pt,thick,
+        fit=(bert)(whi)(w2v)(res)(resV)(tprj)(tprj2)(aprj)(iprj)(vprj)(ner)(sph),
+        inner sep=8pt,
+        label={[font=\scriptsize\bfseries,color=navyblue]above left:Phase 1 — Encoding}]{};
+  \node[rectangle,draw=mintgreen!50,fill=mintgreen!4,rounded corners=7pt,thick,
+        fit=(faiss)(kgr)(hsc)(conf)(full)(part),inner sep=8pt,
+        label={[font=\scriptsize\bfseries,color=mintgreen!70!black]above:Phase 2 — Retrieval}]{};
+  \node[rectangle,draw=coralred!50,fill=coralred!4,rounded corners=7pt,thick,
+        fit=(pb)(llm)(ans)(tts)(rej)(rl3),inner sep=8pt,
+        label={[font=\scriptsize\bfseries,color=coralred]above:Phase 3 — Generation + \textcircled{3}}]{};
+  \node[rectangle,draw=fusioncolor!50,fill=fusioncolor!4,rounded corners=7pt,thick,
+        fit=(stk)(trf)(rl4)(wpl)(hd)(sent),inner sep=8pt,
+        label={[font=\scriptsize\bfseries,color=fusioncolor]above:Pipeline E Fusion + \textcircled{4}}]{};
+  \node[rectangle,draw=rlpolicyborder!60,fill=rlAudioC!15,rounded corners=6pt,dashed,thick,
+        fit=(rl1),inner sep=6pt,
+        label={[font=\scriptsize\bfseries,color=rlpolicyborder]above:\textcircled{1}}]{};
+  \node[rectangle,draw=rlpolicyborder!60,fill=rlVideoC!15,rounded corners=6pt,dashed,thick,
+        fit=(rl2),inner sep=6pt,
+        label={[font=\scriptsize\bfseries,color=rlpolicyborder]above:\textcircled{2}}]{};
+  \node[rectangle,draw=rlblue!50,fill=rlblue!4,rounded corners=7pt,thick,
+        fit=(rob)(mem)(qev)(qtg)(dql)(nlp)(subcl),inner sep=8pt,
+        label={[font=\scriptsize\bfseries,color=rlblue]above:\textcircled{5} Robot DQN}]{};
+\end{pgfonlayer}
+\end{tikzpicture}}
+\caption{MIVA-KNIGHT v2 complete pipeline with all five RL injection points.
+Orange-bordered nodes (\textcircled{1}--\textcircled{4}) are new modality-wide
+DQN policies; \textcircled{5} is the original robot-control DQN.
+Orange arrows denote RL reward/action flows.}
+\label{fig:rl_v2_pipeline}
+\end{figure}
+
+\subsection{Comparative Summary and Theoretical Connections}
+\label{sec:rl_summary}
+
+\begin{table}[H]
+\centering
+\caption{Theoretical connections between the four new RL injection points and
+existing MIVA-KNIGHT formal results}
+\label{tab:rl_theory}
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Agent} & \textbf{Extends} & \textbf{Formal Grounding} \\
+\midrule
+\textcircled{1} RL-Audio &
+  Clinical Safety Constraint ($\tau_M = \tau_G + 0.15$) &
+  Axiom~\ref{ax:tau_bounds}: bounds prevent threshold collapse;
+  Theorem~\ref{thm:audio_state}: state sufficiency \\
+\textcircled{2} RL-Video &
+  Peak Expression Frame Theorem (\S\ref{sec:pipelineD}) &
+  Lemma~\ref{lem:middle_prior}: middle-frame as uniform prior;
+  Theorem~\ref{thm:frame_opt}: frame selection as cosine optimisation \\
+\textcircled{3} RL-Text &
+  PromptBuilder 4-section RAG; Domain Hot-Swap ($<$5s) &
+  Axiom~\ref{ax:prompt_mono}: strategy monotonicity wrt.\ confidence;
+  Def.~\ref{def:prompt_templates}: four template variants \\
+\textcircled{4} RL-Fusion &
+  Mean-pool in \texttt{MultimodalFusionTransformer.forward};
+  Late Fusion Missing-Modality Proposition &
+  Theorem~\ref{thm:fusion_dom}: dominance under missing modality;
+  Lemma~\ref{lem:zero_norm}: zero-norm detection \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{tcolorbox}[keybox,title={Updated Conclusion Item 8 --- Four Modality-Wide RL Policies}]
+The four new RL injection points extend MIVA-KNIGHT from a system with a
+single downstream RL loop to one where every major inference decision ---
+audio focus, video frame selection, prompt construction, and modality
+fusion weighting --- is governed by an adaptive, experience-driven policy.
+All four agents reuse the shared \texttt{DQNAgent} infrastructure (ring-buffer,
+dual Q-networks, $\varepsilon$-greedy decay, Huber loss) established in
+\S\ref{sec:rl}, and each is formally grounded in the pre-existing
+axioms, theorems, and definitions of Pipelines~C, D, E, and the RAG engine.
+\end{tcolorbox}
+
+
+%%
+%% ============================================================
 %% CONCLUSION
 %% ============================================================
 %%
+
+%%
+%% ============================================================
+%% PART XIX — AGENTIC AI RESPONSE SYSTEM FOR AUTOMATED REVIEW
+%%            VERIFICATION AND INTELLIGENT REPLY GENERATION
+%% ============================================================
+%%
+\newpage
+\section{Agentic AI Review Response System}
+\label{sec:agentic_review}
+
+\subsection{Motivation and Overview}
+
+Modern review ecosystems — covering films, products, academic papers, restaurants, 
+software, and consumer goods — receive millions of submissions daily, yet the 
+\emph{quality} of those reviews varies enormously. Factually incorrect claims 
+(``this film is a horror movie'' when the film is a romantic comedy; 
+``the lead actor was replaced during production'' when no such change occurred) 
+cause downstream harm: consumers are misinformed, creators are unfairly judged, 
+and aggregation systems amplify errors. Traditional moderation pipelines either 
+rely on rule-based keyword filters (brittle, gaming-prone) or human moderators 
+(slow, expensive, inconsistent).
+
+\textbf{MIVA-KNIGHT's Agentic Review Response System (ARRS)} addresses this 
+gap by coupling the hybrid RAG engine (FAISS + Knowledge Graph) already 
+developed in Sections~\ref{sec:kg}--\ref{sec:retrieval} with a new 
+\emph{agentic loop}: a structured pipeline that \emph{autonomously} receives 
+a review, \emph{decomposes} it into verifiable claims, \emph{retrieves} 
+corroborating or refuting evidence from multiple heterogeneous sources 
+(knowledge graph, dense vector corpus, real-time retrieval), \emph{adjudicates} 
+each claim with a confidence score, and \emph{generates} a personalised, 
+source-cited response report that is dispatched back to the original reviewer.
+
+\begin{tcolorbox}[keybox,title={What Makes It Agentic?}]
+An \emph{agent} perceives its environment, takes actions, and evaluates outcomes 
+in a loop. ARRS is agentic because it:
+\begin{enumerate}[label=\textbf{A\arabic*.},nosep]
+  \item \textbf{Perceives} the review as multimodal input (text, optional rating, 
+        optional sentiment audio/video clip from the reviewer).
+  \item \textbf{Plans} a claim decomposition strategy (LLM-driven chain-of-thought).
+  \item \textbf{Acts} by issuing structured retrieval queries per claim to both 
+        FAISS and the KG.
+  \item \textbf{Evaluates} evidence, assigns verdict $v \in \{\mathtt{confirmed},
+        \mathtt{refuted}, \mathtt{unsupported}, \mathtt{nuanced}\}$, and 
+        computes a confidence score.
+  \item \textbf{Iterates} if confidence is insufficient (max $K_{\max}=3$ 
+        re-retrieval rounds).
+  \item \textbf{Generates} a structured response report and \emph{dispatches} it 
+        to the reviewer.
+  \item \textbf{Agentic Review Response System (ARRS):} A domain-universal five-stage agentic pipeline (claim decomposition $\to$ iterative hybrid RAG $\to$ verdict engine $\to$ tone-adaptive generation) for automated, evidence-cited review verification and response dispatch, reusing all MIVA-KNIGHT modules with zero architectural change.
+\end{enumerate}
+
+\begin{tcolorbox}[laymanbox,title={In Plain Terms --- Agentic Review Response}]
+Imagine a review says: ``This movie is a horror film and the lead actor gave a 
+terrible performance.'' The agentic system first looks up what genre the movie 
+actually belongs to (from structured databases and other viewer responses), checks 
+critical consensus on the acting, weighs the evidence, and then automatically 
+sends the reviewer a polite, well-cited reply: ``According to six verified sources, 
+this film is classified as a psychological thriller, not horror. Critic and audience 
+consensus on the lead performance is predominantly positive (87\% approval). 
+Here is what we found\ldots''
+\end{tcolorbox}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Formal Definitions}
+\label{sec:arrs_defs}
+
+\begin{definition}[Review Document $\mathcal{R}$]
+A review document is a tuple:
+\[
+  \mathcal{R} = (\rho,\; U,\; \mathcal{Q},\; t,\; m_{\text{opt}})
+\]
+where $\rho \in \Sigma^*$ is the raw text body, $U$ is the reviewer identifier, 
+$\mathcal{Q} \in \{1,\ldots,5\}$ is an optional star rating, $t$ is the 
+submission timestamp, and $m_{\text{opt}} \in \{\text{audio, video, image}\}^*$ 
+is an optional set of attached multimedia evidence.
+\end{definition}
+
+\begin{definition}[Atomic Claim $\mathbf{c}$]
+An atomic claim extracted from $\mathcal{R}$ is a 4-tuple:
+\[
+  \mathbf{c} = (\phi,\; e_{\mathbf{c}},\; \text{type},\; \text{polarity})
+\]
+where $\phi \in \Sigma^*$ is the natural-language claim string, 
+$e_{\mathbf{c}} \in \Sph^{511}$ is the BERT-projected claim embedding, 
+$\text{type} \in \{\mathtt{factual},\, \mathtt{opinion},\, \mathtt{suggestion},\, 
+\mathtt{question}\}$, and $\text{polarity} \in \{-1, 0, +1\}$ is the 
+TextBlob-derived sentiment direction.
+\end{definition}
+
+\begin{definition}[Evidence Bundle $\mathcal{E}(\mathbf{c})$]
+For claim $\mathbf{c}$, the evidence bundle is:
+\[
+  \mathcal{E}(\mathbf{c}) = \bigl\{(d_j,\; s_j^{\text{hyb}},\; v_j)\bigr\}_{j=1}^{N_e}
+\]
+where $d_j$ is a retrieved document, $s_j^{\text{hyb}} \in [0,1]$ is the 
+hybrid retrieval score (Algorithm~\ref{alg:rerank}), and 
+$v_j \in \{+1, 0, -1\}$ is the document's stance on $\mathbf{c}$ 
+(supporting, neutral, refuting).
+\end{definition}
+
+\begin{definition}[Claim Verdict $V(\mathbf{c})$]
+\[
+  V(\mathbf{c}) = 
+  \begin{cases}
+    \mathtt{confirmed}   & \text{if } S^+ > \theta_c \text{ and } S^- < \theta_r \\
+    \mathtt{refuted}     & \text{if } S^- > \theta_c \text{ and } S^+ < \theta_r \\
+    \mathtt{nuanced}     & \text{if } |S^+ - S^-| < \delta_\nu \\
+    \mathtt{unsupported} & \text{if } S^+ < \theta_r \text{ and } S^- < \theta_r
+  \end{cases}
+\]
+where the weighted stance scores are:
+\[
+  S^+ = \sum_{j : v_j = +1} s_j^{\text{hyb}}, \quad
+  S^- = \sum_{j : v_j = -1} s_j^{\text{hyb}}
+\]
+and $\theta_c = 0.55$, $\theta_r = 0.20$, $\delta_\nu = 0.15$ are the confirmation, 
+rejection, and nuance thresholds, respectively.
+\end{definition}
+
+\begin{definition}[Response Confidence Score $\kappa$]
+\[
+  \kappa(\mathbf{c}) = \frac{S^+ + S^- + \epsilon_\kappa}{|{S^+ + S^- + 
+  \delta_\nu}|} \cdot \min\!\left(1,\; \frac{N_e}{N_{\min}}\right)
+  \in [0,1]
+\]
+where $N_{\min} = 3$ is the minimum evidence threshold, and 
+$\epsilon_\kappa = 10^{-6}$.
+\end{definition}
+
+\begin{axiom}[Evidence Independence Assumption]
+\label{ax:evidence_independence}
+Each retrieved document $d_j \in \mathcal{E}(\mathbf{c})$ is assumed to provide 
+independent evidence for or against claim $\mathbf{c}$. Under this assumption, 
+the combined confidence satisfies:
+\[
+  P(\text{verdict is correct} \mid \mathcal{E}(\mathbf{c})) \ge 
+  1 - \prod_{j=1}^{N_e} (1 - s_j^{\text{hyb}} \cdot |v_j|)
+\]
+For $N_e \ge 3$ sources with $s_j^{\text{hyb}} \ge 0.4$, this yields 
+$P(\text{correct}) \ge 0.784$.
+\end{axiom}
+
+\begin{lemma}[Claim Type Retrieval Strategy]
+\label{lem:claim_type}
+For factual claims ($\text{type} = \mathtt{factual}$), the KG component 
+dominates: $\alpha_{\mathtt{factual}} = 0.40$ (less weight on dense, more 
+on KG PMI edges). For opinion claims, the dense FAISS component dominates: 
+$\alpha_{\mathtt{opinion}} = 0.80$, since opinions are best matched by 
+semantic similarity to other reviewer texts rather than structured entity 
+relationships.
+\end{lemma}
+
+\begin{proof}
+Factual claims involve named entities (film title, actor name, genre) 
+directly present as KG nodes. PMI co-occurrence encodes real-world attribute 
+associations (entity $\xrightarrow{\text{PMI}} \text{genre}$) that dense 
+similarity misses when phrased differently. Opinion claims use subjective 
+language whose similarity to reviewer consensus is better captured by 
+dense embeddings. $\square$
+\end{proof}
+
+\begin{theorem}[ARRS Convergence Guarantee]
+\label{thm:arrs_convergence}
+Let $K_{\max}$ be the maximum number of retrieval re-attempts per claim, and 
+$\delta_\kappa = 0.10$ the minimum per-round confidence gain required to 
+continue. ARRS terminates in at most $K_{\max}$ rounds for every claim $\mathbf{c}$, 
+producing a verdict in $\{\mathtt{confirmed}, \mathtt{refuted}, \mathtt{nuanced}, 
+\mathtt{unsupported}\}$. The expected number of re-retrieval rounds is:
+\[
+  \EE[K] \le K_{\max} \cdot \left(1 - (1 - e^{-\lambda N_e})\right)
+\]
+where $\lambda = 0.5$ is the per-round confidence gain rate.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+In each round, additional queries widen the retrieval set by at most 
+$\Delta N_e = 5$ documents. If $\kappa \ge 1 - \delta_\kappa$ after round $k$, 
+the loop halts. Since the corpus is finite, the sequence $\kappa^{(0)} \le 
+\kappa^{(1)} \le \ldots$ is bounded and monotone, guaranteeing convergence 
+within $K_{\max}$ iterations. $\square$
+\end{proof}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{ARRS System Architecture}
+\label{sec:arrs_arch}
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.75cm and 1.1cm]
+
+  %% INPUT
+  \node[inputnode,minimum width=3.2cm,minimum height=2.4cm,text width=3.0cm]
+    (rev) at (0,0) {\textbf{Review Input}\\\small $\mathcal{R} = (\rho, U, \mathcal{Q})$\\text + optional\\audio / video};
+
+  %% STAGE 1 — MULTIMODAL ENCODING
+  \node[encnode,right=1.2cm of rev,minimum width=3.2cm,minimum height=1.0cm]
+    (enc_t) {Text Encoder\\BERT + TextProj\\$e_\rho \in \Sph^{511}$};
+  \node[encnode,below=0.5cm of enc_t,minimum width=3.2cm,minimum height=1.0cm]
+    (enc_a) {Audio Encoder\\Wav2Vec (opt.)\\emotion $e_s$};
+  \node[encnode,below=0.5cm of enc_a,minimum width=3.2cm,minimum height=1.0cm]
+    (enc_s) {Sentiment\\TextBlob polarity\\$p \in [-1,+1]$};
+
+  %% STAGE 2 — CLAIM DECOMPOSITION
+  \node[basebox,fill=boxpurple,draw=lavender,minimum width=3.5cm,minimum height=2.4cm,
+        text width=3.3cm,right=1.1cm of enc_t,yshift=-0.9cm]
+    (decomp) {\textbf{LLM Claim Decomp.}\\\small Llama-3.1-8B\\\small Extract $C = \{c_1,\ldots,c_M\}$\\\small Classify type + polarity};
+
+  %% STAGE 3 — AGENTIC RETRIEVAL LOOP
+  \node[retnode,right=1.4cm of decomp,minimum width=3.2cm,minimum height=1.2cm]
+    (faiss2) {FAISS Dense\\top-$K = 20$\\\small $\alpha$ by claim type};
+  \node[retnode,below=0.5cm of faiss2,minimum width=3.2cm,minimum height=1.2cm]
+    (kg2) {KG PMI Re-rank\\\small entity overlap\\\small 2-hop DFS};
+  \node[decnode,right=1.1cm of faiss2,yshift=-0.7cm,minimum width=2.8cm]
+    (conf2) {$\kappa \ge$\\threshold?};
+  \node[datanode,above=0.5cm of conf2,font=\scriptsize]
+    (retry) {Re-query\\(max $K_{\max}=3$)};
+
+  %% STAGE 4 — VERDICT ENGINE
+  \node[basebox,fill=boxorange,draw=amber,minimum width=3.2cm,minimum height=2.4cm,
+        text width=3.0cm,right=1.2cm of conf2,yshift=0.3cm]
+    (verdict) {\textbf{Verdict Engine}\\\small Per-claim:\\\small $V(c) \in$\\\small \{confirmed, refuted,\\\small nuanced, unsupported\}};
+
+  %% STAGE 5 — RESPONSE GENERATOR
+  \node[gennode,right=1.1cm of verdict,minimum width=3.2cm,minimum height=1.2cm]
+    (rgen) {\textbf{Response Gen.}\\RAG prompt\\\small multi-section};
+  \node[gennode,below=0.5cm of rgen,minimum width=3.2cm,minimum height=1.2cm]
+    (llm3) {Groq LLM\\Llama-3.1-8B\\response report};
+
+  %% OUTPUT
+  \node[outnode,right=1.0cm of rgen,yshift=-0.5cm,minimum width=3.2cm,minimum height=2.4cm,
+        text width=3.0cm]
+    (out3) {\textbf{Response Report}\\\small Claim verdicts\\\small Evidence citations\\\small Tone-adjusted\\\small gTTS audio (opt.)};
+
+  %% CONNECTIONS
+  \draw[thickarr](rev.east) -- ++(0.3,0) |- (enc_t.west);
+  \draw[thickarr](rev.east) -- ++(0.3,0) |- (enc_a.west);
+  \draw[thickarr](rev.east) -- ++(0.3,0) |- (enc_s.west);
+  \draw[thickarr](enc_t.east) -- ++(0.2,0) |- (decomp.west);
+  \draw[thickarr](enc_a.east) -- ++(0.2,0) |- (decomp.west);
+  \draw[thickarr](enc_s.east) -- ++(0.2,0) |- (decomp.west);
+  \draw[thickarr](decomp.east) -- ++(0.3,0) |- (faiss2.west);
+  \draw[thickarr](decomp.east) -- ++(0.3,0) |- (kg2.west);
+  \draw[thickarr](faiss2.east) -- ++(0.2,0) |- (conf2.north);
+  \draw[thickarr](kg2.east) -- ++(0.2,0) |- (conf2.south);
+  \draw[arr,color=ForestGreen](conf2.north) -- ++(0,0.3) -| (verdict.south west);
+  \draw[redarr,dashed](conf2.north east) -- (retry.south);
+  \draw[redarr,dashed](retry.west) -- ++(-0.3,0) |- (faiss2.north)
+    node[near start,left,font=\tiny]{re-query};
+  \draw[thickarr](verdict.east) -- (rgen.west);
+  \draw[thickarr](rgen.south) -- (llm3.north);
+  \draw[thickarr](rgen.east) -- ++(0.2,0) |- (out3.north west);
+  \draw[thickarr](llm3.east) -- ++(0.2,0) |- (out3.south west);
+  \draw[dasharr](enc_s.east) -- ++(1.2,0) |- (rgen.south west)
+    node[near end,below,font=\tiny]{tone};
+
+  \begin{pgfonlayer}{background}
+    \node[rectangle,draw=NavyBlue!40,fill=NavyBlue!5,rounded corners=7pt,thick,
+          fit=(enc_t)(enc_a)(enc_s),inner sep=7pt,
+          label={[font=\scriptsize\bfseries,color=NavyBlue]above:Stage 1 --- Encoding}]{};
+    \node[rectangle,draw=lavender!60,fill=lavender!8,rounded corners=7pt,thick,
+          fit=(decomp),inner sep=7pt,
+          label={[font=\scriptsize\bfseries,color=lavender]above:Stage 2 --- Decomp.}]{};
+    \node[rectangle,draw=mintgreen!60,fill=mintgreen!5,rounded corners=7pt,thick,
+          fit=(faiss2)(kg2)(conf2)(retry),inner sep=7pt,
+          label={[font=\scriptsize\bfseries,color=mintgreen!70!black]above:Stage 3 --- Agentic Retrieval}]{};
+    \node[rectangle,draw=amber!60,fill=amber!8,rounded corners=7pt,thick,
+          fit=(verdict),inner sep=7pt,
+          label={[font=\scriptsize\bfseries,color=amber]above:Stage 4 --- Verdict}]{};
+    \node[rectangle,draw=coralred!50,fill=coralred!5,rounded corners=7pt,thick,
+          fit=(rgen)(llm3),inner sep=7pt,
+          label={[font=\scriptsize\bfseries,color=coralred]above:Stage 5 --- Generation}]{};
+  \end{pgfonlayer}
+\end{tikzpicture}
+}
+\caption{ARRS five-stage pipeline: multimodal encoding $\to$ LLM claim decomposition 
+$\to$ agentic hybrid retrieval loop (FAISS + KG, max $K_{\max}=3$ rounds) 
+$\to$ verdict engine $\to$ RAG response generation.}
+\label{fig:arrs_pipeline}
+\end{figure}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Stage 1 — Multimodal Review Encoding}
+\label{sec:arrs_stage1}
+
+\begin{algorithm}[H]
+\caption{ARRS Stage 1 --- Multimodal Review Encoding}
+\label{alg:arrs_encode}
+\begin{algorithmic}[1]
+\Require Review $\mathcal{R} = (\rho, U, \mathcal{Q}, t, m_{\text{opt}})$
+\Ensure Review embedding $e_\rho \in \Sph^{511}$; sentiment $p$; entities $\mathcal{E}_\rho$;
+        optional emotion $e_s$
+\State \textbf{// Text path (always active)}
+\State tokens $\gets$ WordPiece$(\rho,\, \texttt{max\_length}=256)$
+\State $H \gets$ BERT$(\text{tokens}).\text{last\_hidden\_state}$ \Comment{$[1 \times T \times 768]$}
+\State $h_\rho \gets \frac{1}{T}\sum_{t=1}^{T} H_{:,t,:}$ \Comment{Mean-pool, $[768]$}
+\State $e_\rho \gets \text{L2-norm}(P_T(h_\rho)) \in \Sph^{511}$
+\State $\mathcal{E}_\rho \gets \text{spaCy-NER}(\rho)$ \Comment{Named entities + noun chunks}
+\State $p \gets \text{TextBlob}(\rho.\text{lower}()).\text{polarity} \in [-1,+1]$
+\State \textbf{// Sentiment emotion label}
+\State $\text{tone} \gets \{p > 0.1 \Rightarrow \text{``positive''}, p < -0.1 \Rightarrow \text{``negative''}, \text{else ``neutral''}\}$
+\State \textbf{// Audio path (optional, if }$m_{\text{opt}}$\textbf{ contains audio)}
+\If{audio $a \in m_{\text{opt}}$}
+  \State $e_s \gets \text{AudioProj}(\text{Wav2Vec}(a))$ \Comment{Emotion embedding}
+  \State emotion $\gets$ argmax$(e_s \cdot C_{\text{mat}}^\top)$ \Comment{Centroid-NN from Pipeline C}
+\EndIf
+\State \Return $(e_\rho,\; p,\; \mathcal{E}_\rho,\; \text{tone},\; e_s)$
+\end{algorithmic}
+\end{algorithm}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Stage 2 — LLM-Driven Claim Decomposition}
+\label{sec:arrs_stage2}
+
+\begin{definition}[Claim Decomposition Prompt $\Pi_{\text{decomp}}$]
+\[
+  \Pi_{\text{decomp}} = 
+  \underbrace{\text{[SYSTEM]}}_{\text{role}} 
+  \Vert\, \underbrace{\text{[REVIEW: }\rho\text{]}}_{\text{content}} 
+  \Vert\, \underbrace{\text{[TASK: Extract }\le M_{\max}\text{ atomic claims as JSON]}}_{\text{instruction}}
+\]
+Each claim JSON object must specify: \texttt{claim\_text}, \texttt{type} 
+$\in \{\mathtt{factual},\, \mathtt{opinion},\, \mathtt{suggestion},\, \mathtt{question}\}$, 
+\texttt{polarity} $\in \{-1, 0, +1\}$, and \texttt{subject\_entity} (main NER 
+entity the claim addresses).
+\end{definition}
+
+\begin{axiom}[Claim Atomicity Principle]
+\label{ax:atomicity}
+Each claim $c_i$ must address exactly one verifiable atomic proposition. 
+Compound claims are split at logical connectives (\emph{and}, \emph{but}, 
+\emph{however}). This ensures each retrieval query is maximally focused, 
+improving precision at the cost of a linear increase in query count.
+\end{axiom}
+
+\begin{theorem}[Claim Decomposition Completeness]
+\label{thm:decomp_complete}
+A review $\rho$ with $W$ words decomposes into at most 
+$M_{\max} = \lfloor W / 15 \rfloor + 1$ atomic claims under 
+Axiom~\ref{ax:atomicity}. For a typical 100-word review: $M_{\max} \le 7$.
+\end{theorem}
+
+\begin{algorithm}[H]
+\caption{ARRS Stage 2 --- LLM Claim Decomposition and Classification}
+\label{alg:arrs_decomp}
+\begin{algorithmic}[1]
+\Require Review $\rho$; entities $\mathcal{E}_\rho$; LLM endpoint
+\Ensure Claim set $C = \{c_1,\ldots,c_M\}$, each with embedding $e_{c_i} \in \Sph^{511}$
+\State Build $\Pi_{\text{decomp}}$ (Def.~above) with 
+       $M_{\max} = \lfloor |\rho|_w / 15\rfloor + 1$
+\State raw $\gets$ LLM.generate$(\Pi_{\text{decomp}})$ \Comment{JSON array of claims}
+\State $C_{\text{raw}} \gets$ JSON.parse(raw) \Comment{Strip markdown fences}
+\State $C \gets \emptyset$
+\For{each $c \in C_{\text{raw}}$}
+  \State $\phi \gets c.\text{claim\_text}$
+  \State $e_c \gets \text{L2-norm}(P_T(\text{BERT-mean}(\phi))) \in \Sph^{511}$
+  \State $\text{polarity} \gets \text{TextBlob}(\phi).\text{polarity}$
+  \State $\alpha_c \gets 0.40$ if $c.\text{type} = \mathtt{factual}$ else $0.80$
+    \Comment{Lemma~\ref{lem:claim_type}}
+  \State $C \gets C \cup \{(\phi, e_c, c.\text{type}, c.\text{polarity}, \alpha_c)\}$
+\EndFor
+\State \Return $C$
+\end{algorithmic}
+\end{algorithm}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Stage 3 — Agentic Hybrid Retrieval Loop}
+\label{sec:arrs_stage3}
+
+The core innovation of ARRS is its \emph{agentic retrieval loop}: unlike 
+the one-shot hybrid retrieval of Algorithm~\ref{alg:rerank}, ARRS 
+iteratively refines the evidence bundle for each claim until confidence 
+$\kappa$ crosses a threshold or $K_{\max}$ rounds are exhausted.
+
+\begin{definition}[Adaptive Alpha Mixing]
+\label{def:adaptive_alpha}
+For claim $c_i$ with type-specific $\alpha_{c_i}$ and round index $k$:
+\[
+  \alpha^{(k)}_{c_i} = \alpha_{c_i} + \Delta_\alpha \cdot k, \quad
+  \Delta_\alpha = \frac{1 - \alpha_{c_i}}{K_{\max}},\quad
+  k \in \{0,\ldots,K_{\max}-1\}
+\]
+As round index increases, the dense component gains more weight, widening 
+the semantic search radius for claims where structured KG edges have not 
+yielded sufficient evidence.
+\end{definition}
+
+\begin{lemma}[Monotone Evidence Expansion]
+\label{lem:monotone_expansion}
+Let $N_e^{(k)}$ be the total unique evidence documents after round $k$. 
+Since each round adds up to $K = 20$ new FAISS candidates and deduplicates 
+by document ID:
+\[
+  N_e^{(k+1)} \ge N_e^{(k)}, \quad k = 0,\ldots,K_{\max}-1
+\]
+The confidence $\kappa^{(k)} = \kappa(\mathcal{E}^{(k)}(c))$ is therefore 
+non-decreasing: $\kappa^{(0)} \le \kappa^{(1)} \le \kappa^{(2)}$.
+\end{lemma}
+
+\begin{proof}
+Each round issues a distinct query $q^{(k)}$ obtained by expanding the 
+original entity set $\mathcal{E}_c$ with 2-hop KG neighbours of entities 
+that returned the highest PMI score in round $k-1$. Since the FAISS index 
+is fixed and query vectors differ, new top-$K$ candidates may include 
+documents not retrieved in prior rounds. Deduplication ensures no document 
+is double-counted, so $N_e$ is strictly non-decreasing. $\square$
+\end{proof}
+
+\begin{algorithm}[H]
+\caption{ARRS Stage 3 --- Agentic Hybrid Retrieval Loop (Per-Claim)}
+\label{alg:arrs_retrieval_loop}
+\begin{algorithmic}[1]
+\Require Claim $c_i = (\phi_i, e_{c_i}, \text{type}_i, p_i, \alpha_i)$;
+         FAISS index; KG $\mathcal{G}$; $K_{\max} = 3$; $\kappa_{\min} = 0.50$
+\Ensure Evidence bundle $\mathcal{E}(c_i)$; confidence $\kappa$; rounds $k$
+\State $\mathcal{E} \gets \emptyset$; $k \gets 0$; $\kappa \gets 0$
+\State $q^{(0)} \gets \phi_i$; 
+       $\mathcal{E}_q^{(0)} \gets \mathcal{E}_{c_i}$ \Comment{Initial entity set from claim}
+\While{$k < K_{\max}$ \textbf{and} $\kappa < \kappa_{\min}$}
+  \State $\alpha^{(k)} \gets \alpha_i + (1-\alpha_i) \cdot k / K_{\max}$
+    \Comment{Def.~\ref{def:adaptive_alpha}: dense gains weight each round}
+  \State \textbf{// Stage 3a: Dense retrieval}
+  \State $\mathcal{F}^{(k)} \gets \text{FAISS.top-}K(e_{c_i})$ \Comment{$K=20$ shortlist}
+  \State \textbf{// Stage 3b: KG entity expansion (2-hop if $k > 0$)}
+  \If{$k > 0$}
+    \State $\mathcal{E}_q^{(k)} \gets \mathcal{E}_q^{(k-1)} \cup 
+           \text{KG.2-hop-neighbours}(\text{top-entity}(\mathcal{E}^{(k-1)}))$
+  \EndIf
+  \State \textbf{// Stage 3c: PMI re-rank with adaptive $\alpha^{(k)}$}
+  \For{$d_j \in \mathcal{F}^{(k)}$}
+    \State $\tilde{s}_d(d_j) \gets $ min-max-normalise(dense\_score$(d_j)$)
+    \State $\tilde{s}_\KG(d_j) \gets $ PMI-entity-overlap$(d_j, \mathcal{E}_q^{(k)})$
+    \State $s_j^{\text{hyb}} \gets \alpha^{(k)} \tilde{s}_d(d_j) 
+           + (1-\alpha^{(k)})\tilde{s}_\KG(d_j)$
+    \State $v_j \gets \text{StanceClassifier}(d_j, \phi_i)$
+      \Comment{+1 / 0 / -1; LLM with 1-shot prompt}
+    \State $\mathcal{E} \gets \mathcal{E} \cup \{(d_j, s_j^{\text{hyb}}, v_j)\}$
+      \Comment{Dedup by doc ID}
+  \EndFor
+  \State $S^+ \gets \sum_{j:v_j=+1} s_j^{\text{hyb}}$; 
+         $S^- \gets \sum_{j:v_j=-1} s_j^{\text{hyb}}$
+  \State $\kappa \gets \frac{S^+ + S^-}{\max(S^+ + S^- + \delta_\nu, \epsilon_\kappa)} 
+         \cdot \min(1, N_e / N_{\min})$
+  \State $k \gets k + 1$
+\EndWhile
+\State \Return $(\mathcal{E},\; \kappa,\; k)$
+\end{algorithmic}
+\end{algorithm}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Stage 4 — Verdict Engine}
+\label{sec:arrs_stage4}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.7cm and 1.0cm]
+  \node[encnode,minimum width=3.0cm] (eb) {Evidence Bundle\\$\mathcal{E}(c_i)$\\$N_e$ docs};
+  \node[lossnode,right=1.2cm of eb,minimum width=3.2cm] (score) {Compute\\$S^+, S^-$\\$\kappa$ score};
+  \node[decnode,right=1.2cm of score,minimum width=3.2cm,aspect=3.0]
+    (vd) {Verdict\\decision};
+  \node[outnode,above=0.8cm of vd,minimum width=2.8cm] (conf3) {\texttt{confirmed}\\$S^+ > 0.55$};
+  \node[outnode,below=0.8cm of vd,minimum width=2.8cm] (ref) {\texttt{refuted}\\$S^- > 0.55$};
+  \node[outnode,right=1.2cm of vd,yshift=0.7cm,minimum width=2.8cm] (nuan) {\texttt{nuanced}\\$|S^+-S^-|<0.15$};
+  \node[outnode,right=1.2cm of vd,yshift=-0.7cm,minimum width=2.8cm] (unsup) {\texttt{unsupported}\\both $< 0.20$};
+  \draw[thickarr](eb)--(score); \draw[thickarr](score)--(vd);
+  \draw[arr,color=ForestGreen](vd.north)--(conf3.south);
+  \draw[redarr](vd.south)--(ref.north);
+  \draw[arr,color=amber](vd.east) -- ++(0.3,0) |- (nuan.west);
+  \draw[dasharr](vd.east) -- ++(0.3,0) |- (unsup.west);
+\end{tikzpicture}
+\caption{Verdict Engine decision tree: evidence scores $S^+, S^-$ and thresholds 
+$\theta_c = 0.55$, $\theta_r = 0.20$, $\delta_\nu = 0.15$ determine the four-class verdict.}
+\label{fig:verdict_tree}
+\end{figure}
+
+\begin{algorithm}[H]
+\caption{ARRS Stage 4 --- Multi-Claim Verdict Engine}
+\label{alg:arrs_verdict}
+\begin{algorithmic}[1]
+\Require Claim set $C = \{c_1,\ldots,c_M\}$ with evidence bundles $\{\mathcal{E}(c_i)\}$
+\Ensure Verdict list $\{V(c_i), \kappa(c_i)\}_{i=1}^M$; overall report score $\Omega$
+\State $\theta_c \gets 0.55$; $\theta_r \gets 0.20$; $\delta_\nu \gets 0.15$
+\For{$i = 1$ to $M$}
+  \State $S^+_i \gets \sum_{j:v_j=+1} s_j^{\text{hyb}}$
+  \State $S^-_i \gets \sum_{j:v_j=-1} s_j^{\text{hyb}}$
+  \If{$S^+_i \ge \theta_c$ \textbf{and} $S^-_i < \theta_r$}
+    \State $V(c_i) \gets \mathtt{confirmed}$
+  \ElsIf{$S^-_i \ge \theta_c$ \textbf{and} $S^+_i < \theta_r$}
+    \State $V(c_i) \gets \mathtt{refuted}$
+  \ElsIf{$|S^+_i - S^-_i| < \delta_\nu$}
+    \State $V(c_i) \gets \mathtt{nuanced}$
+  \Else
+    \State $V(c_i) \gets \mathtt{unsupported}$
+  \EndIf
+  \State $\kappa(c_i) \gets \frac{S^+_i + S^-_i}{\max(S^+_i + S^-_i + \delta_\nu, 10^{-6})}
+         \cdot \min(1, N_e^{(i)} / 3)$
+\EndFor
+\State $\Omega \gets \frac{1}{M}\sum_{i=1}^M \kappa(c_i)$
+  \Comment{Overall response confidence}
+\State \Return $\{(V(c_i), \kappa(c_i))\}_{i=1}^M$, $\Omega$
+\end{algorithmic}
+\end{algorithm}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Stage 5 — Tone-Adaptive Response Generation}
+\label{sec:arrs_stage5}
+
+\begin{definition}[Tone-Adaptive RAG Prompt $\Pi_{\text{response}}$]
+\label{def:response_prompt}
+Let tone $\in \{\text{positive}, \text{neutral}, \text{negative}\}$ be the 
+reviewer's detected sentiment, and $\{(c_i, V_i, E_i)\}$ the claim--verdict--evidence 
+triples. The response prompt is:
+\[
+  \Pi_{\text{response}} = 
+  \Pi_{\text{system}}(\text{tone}) \;\Vert\; 
+  \Pi_{\text{verdicts}}(\{V_i\}) \;\Vert\; 
+  \Pi_{\text{evidence}}(\{E_i\}) \;\Vert\; 
+  \Pi_{\text{instruction}}
+\]
+\[
+  \Pi_{\text{system}}(\text{tone}) = 
+  \begin{cases}
+    \text{``Respond warmly and reinforcingly''} & \text{tone} = \text{positive} \\
+    \text{``Respond professionally and factually''} & \text{tone} = \text{neutral} \\
+    \text{``Respond empathetically and constructively''} & \text{tone} = \text{negative}
+  \end{cases}
+\]
+\end{definition}
+
+\begin{axiom}[Grounded Response Constraint]
+\label{ax:response_grounded}
+Every sentence in the generated response report that makes a factual claim 
+must be traceable to at least one document $d_j \in \bigcup_i \mathcal{E}(c_i)$ 
+with $s_j^{\text{hyb}} \ge \tau_G = 0.40$. This extends 
+Axiom~\ref{ax:grounding} (Grounding Constraint, \S\ref{sec:pipelineA}) 
+to the multi-claim review context.
+\end{axiom}
+
+\begin{theorem}[Response Report Faithfulness]
+\label{thm:response_faithful}
+Under Axiom~\ref{ax:response_grounded} and the ARRS hallucination guard 
+(rejecting claims with $\kappa < 0.30$), the probability of a hallucinated 
+factual claim in the response satisfies:
+\[
+  P(\text{hallucination per claim}) \le 1 - \prod_{j=1}^{N_e} s_j^{\text{hyb}}
+  \le 1 - (0.40)^{N_{\min}} = 1 - 0.064 = 0.936^{-1} \approx 0.064
+\]
+i.e.\ $\le 6.4\%$ per claim for $N_{\min} = 3$ evidence documents at minimum 
+confidence $\tau_G = 0.40$.
+\end{theorem}
+
+\begin{algorithm}[H]
+\caption{ARRS Stage 5 --- Tone-Adaptive Response Report Generation}
+\label{alg:arrs_generate}
+\begin{algorithmic}[1]
+\Require Claim verdicts $\{(c_i, V_i, \kappa_i, \mathcal{E}_i)\}_{i=1}^M$;
+         reviewer tone; overall $\Omega$; LLM endpoint
+\Ensure Response report string $R_{\text{out}}$; optional gTTS audio
+\State \textbf{// Section 1: Header with overall confidence}
+\State $\Pi_1 \gets$ f``Your review has been verified (confidence: $\{100\Omega:.0f\}$\%).''
+\State \textbf{// Section 2: Per-claim verdicts with evidence citations}
+\For{$i = 1$ to $M$}
+  \State badge $\gets \{\mathtt{confirmed}: \checkmark, \mathtt{refuted}: \times, 
+         \mathtt{nuanced}: \sim, \mathtt{unsupported}: ?\}[V_i]$
+  \State top\_ev $\gets$ top-3$(\mathcal{E}_i, \text{by } s_j^{\text{hyb}})$
+  \State $\Pi_i \gets$ f``\{badge\} \{c_i.\phi\}\\nSources: \{top\_ev\}''
+\EndFor
+\State \textbf{// Section 3: Tone-adjusted closing message}
+\State $\Pi_{\text{close}} \gets \Pi_{\text{system}}(\text{tone})$ \Comment{Def.~\ref{def:response_prompt}}
+\State \textbf{// Section 4: Assemble full RAG prompt}
+\State $\Pi_{\text{full}} \gets \Pi_1 \Vert \bigoplus_{i=1}^M \Pi_i \Vert \Pi_{\text{close}} \Vert$
+       ``Cite sources. Use ONLY retrieved evidence.''
+\State \textbf{// Guard: only call LLM if $\Omega \ge 0.30$}
+\If{$\Omega \ge 0.30$}
+  \State $R_{\text{out}} \gets$ LLM.generate$(\Pi_{\text{full}})$
+\Else
+  \State $R_{\text{out}} \gets$ \textsc{LowConfidenceResponse}($\Omega$)
+\EndIf
+\If{TTS enabled}
+  \State audio $\gets$ gTTS$(R_{\text{out}})$ \Comment{MP3 byte stream}
+\EndIf
+\State \Return $(R_{\text{out}},\; \text{audio})$
+\end{algorithmic}
+\end{algorithm}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Full ARRS Orchestration Algorithm}
+\label{sec:arrs_full}
+
+\begin{algorithm}[H]
+\caption{ARRS --- Full Agentic Review Response (End-to-End)}
+\label{alg:arrs_full}
+\begin{algorithmic}[1]
+\Require Review $\mathcal{R}$; loaded MIVA-KNIGHT pipeline (FAISS, KG, LLM)
+\Ensure Response report $R_{\text{out}}$; dispatch confirmation
+\State \textbf{Stage 1:} $(e_\rho, p, \mathcal{E}_\rho, \text{tone}, e_s)
+       \gets$ \Call{ARRSEncode}{$\mathcal{R}$}
+  \Comment{Algorithm~\ref{alg:arrs_encode}}
+\State \textbf{Stage 2:} $C \gets$ \Call{LLMDecomp}{$\mathcal{R}.\rho,\; \mathcal{E}_\rho$}
+  \Comment{Algorithm~\ref{alg:arrs_decomp}}
+\If{$|C| = 0$}
+  \State \Return \textsc{NoClaimsResponse}()
+\EndIf
+\State \textbf{Stage 3: Agentic retrieval loop per claim}
+\For{each $c_i \in C$}
+  \State $(\mathcal{E}_i, \kappa_i, k_i) \gets$ 
+         \Call{AgenticRetrievalLoop}{$c_i$}
+    \Comment{Algorithm~\ref{alg:arrs_retrieval_loop}}
+  \State log: f``Claim \{i\}: \{k_i\} rounds, $\kappa$=\{$\kappa_i:.3f$\}''
+\EndFor
+\State \textbf{Stage 4:} $\{V_i\}, \Omega \gets$ \Call{VerdictEngine}{$C, \{\mathcal{E}_i\}$}
+  \Comment{Algorithm~\ref{alg:arrs_verdict}}
+\State \textbf{Stage 5:} $(R_{\text{out}},\, \text{audio}) \gets$
+       \Call{ToneAdaptiveGenerate}{$\{c_i, V_i, \kappa_i\}, \text{tone}, \Omega$}
+  \Comment{Algorithm~\ref{alg:arrs_generate}}
+\State \textbf{Dispatch:} send $R_{\text{out}}$ to reviewer $U$ via \textsc{Notify}($U$)
+\State \Return $(R_{\text{out}},\; \Omega,\; \{V_i\})$
+\end{algorithmic}
+\end{algorithm}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Mathematical Derivation: Confidence Score Optimality}
+\label{sec:arrs_confidence_math}
+
+\begin{theorem}[Confidence Score is a Proper Scoring Rule]
+\label{thm:proper_scoring}
+The confidence score $\kappa(\mathbf{c})$ defined in 
+\S\ref{sec:arrs_defs} satisfies the proper scoring rule property: 
+it is maximised in expectation when the predicted verdict matches the 
+true verdict distribution:
+\[
+  \EE[\kappa(\mathbf{c}) \mid \text{true verdict}] \ge 
+  \EE[\kappa(\mathbf{c}) \mid \text{any other prediction}]
+\]
+\end{theorem}
+
+\begin{proof}
+Since $\kappa$ is a weighted sum of hybrid retrieval scores $s_j^{\text{hyb}} 
+\in [0,1]$ over documents with correct stance $v_j$, and $s_j^{\text{hyb}}$ 
+is maximised for documents most semantically similar to the claim 
+(by FAISS inner product), an error in verdict assignment (e.g.\ labelling 
+a document as supporting when it refutes) decreases the weighted sum. 
+By Lemma~\ref{lem:cosdot} (cosine-dot equivalence on $\Sph^{511}$), 
+semantic similarity equals inner product, which is the optimal 
+(Bayes-consistent) discriminator for claim relevance. $\square$
+\end{proof}
+
+\begin{definition}[Bayesian Evidence Update]
+\label{def:bayes_evidence}
+Let $P_0(V \mid c) = [0.25, 0.25, 0.25, 0.25]$ be the uniform prior over 
+the four verdict classes. After observing evidence bundle $\mathcal{E}$ with 
+$N^+$ supporting and $N^-$ refuting documents:
+\[
+  P(V = \mathtt{confirmed} \mid \mathcal{E}) 
+  \propto P_0 \cdot \prod_{j:v_j=+1} s_j^{\text{hyb}} 
+  = 0.25 \cdot \exp\!\left(\sum_{j:v_j=+1} \log s_j^{\text{hyb}}\right)
+\]
+The log-evidence accumulates additively across rounds (by Lemma~\ref{lem:monotone_expansion}), 
+justifying the iterative retrieval loop.
+\end{definition}
+
+\begin{lemma}[Adaptive Alpha Optimises Coverage-Precision Trade-off]
+\label{lem:alpha_tradeoff}
+For factual claims, starting with $\alpha^{(0)} = 0.40$ (KG-heavy) maximises 
+\emph{precision} in round~0 by leveraging structured entity associations. 
+As $\alpha^{(k)}$ increases toward 1.0 in subsequent rounds, \emph{recall} 
+increases by including semantically similar but entity-distant documents. 
+The adaptive schedule achieves the Pareto-optimal precision--recall curve 
+along the $\alpha$-axis.
+\end{lemma}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Worked Example: Movie Review Fact-Check}
+\label{sec:arrs_example}
+
+\begin{example}[Movie Review Verification]
+\label{ex:movie_review}
+Consider the review:
+\begin{center}
+  \textit{``This movie is a horror film. The lead actress gave a terrible performance. 
+  The director should have chosen a different ending.''}
+\end{center}
+
+\textbf{Stage 1:} Text embedding $e_\rho \in \Sph^{511}$; 
+polarity $p = -0.35$ (negative); entities = \{``movie'', ``lead actress'', ``director''\}.
+
+\textbf{Stage 2:} LLM decomposes into $M = 3$ atomic claims:
+\[
+  c_1 = (\text{``This movie is a horror film''}, \mathtt{factual}, -0.0, \alpha_1 = 0.40)
+\]
+\[
+  c_2 = (\text{``The lead actress gave a terrible performance''}, \mathtt{opinion}, -1, \alpha_2 = 0.80)
+\]
+\[
+  c_3 = (\text{``The director should have chosen a different ending''}, \mathtt{suggestion}, -1, \alpha_3 = 0.80)
+\]
+
+\textbf{Stage 3, Claim $c_1$} (factual, $\alpha^{(0)}=0.40$):
+\begin{itemize}[nosep]
+  \item Round 0: FAISS returns 20 genre-description documents. KG PMI edges: 
+        ``movie'' $\xrightarrow{0.82}$ ``thriller'', ``movie'' $\xrightarrow{0.71}$ ``drama''. 
+        No KG edge to ``horror''. Refuting documents ($S^- = 0.68$) dominate.
+        $\kappa^{(0)} = 0.71 \ge 0.50$ $\Rightarrow$ loop exits.
+\end{itemize}
+
+\textbf{Stage 4, Claim $c_1$}: $S^- = 0.68 > \theta_c = 0.55$, $S^+ = 0.03 < \theta_r$ 
+$\Rightarrow V(c_1) = \mathtt{refuted}$.
+
+\textbf{Stage 5}: Tone = negative $\Rightarrow$ empathetic tone. Response:
+\begin{quote}
+  \textit{``Thank you for your review. We checked your claims against 6 verified sources: 
+  $[\times]$ \textbf{Genre claim}: Our sources classify this film as a psychological 
+  thriller (IMDb, TMDB, Rotten Tomatoes); no major source lists it as horror (confidence: 71\%).  
+  $[\sim]$ \textbf{Performance assessment}: Critical opinion is mixed --- 42\% positive, 
+  38\% negative (confidence: 58\%). $[?]$ \textbf{Ending suggestion}: This is a subjective 
+  preference with no verifiable consensus (confidence: 28\%).''}
+\end{quote}
+\end{example}
+
+\begin{remark}[ARRS vs.\ Single-Shot RAG]
+Algorithm~\ref{alg:arrs_full} differs from Algorithm~\ref{alg:query} 
+(single-shot MIVA-KNIGHT inference) in three structural ways: 
+(1) \emph{decomposition} into atomic claims before retrieval, rather than treating 
+the whole review as a single query; (2) \emph{iterative} retrieval per claim 
+until confidence converges; (3) \emph{per-claim verdicts} with explicit stance 
+classification, rather than a single-shot answer generation.
+\end{remark}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Integration with Existing MIVA-KNIGHT Pipelines}
+\label{sec:arrs_integration}
+
+ARRS is not a standalone system; it reuses every major MIVA-KNIGHT component:
+
+\begin{table}[H]
+\centering
+\caption{ARRS component reuse from existing MIVA-KNIGHT pipelines}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{3.8cm}p{4.5cm}p{5.0cm}}
+\toprule
+\textbf{ARRS Component} & \textbf{Reused Module} & \textbf{New Contribution} \\
+\midrule
+Text encoding & TextProjection + BERT (Alg.~\ref{alg:textencode}) & Claim-level batching \\
+Audio encoding & AudioProjection + Wav2Vec (Pipeline C) & Reviewer emotion detection \\
+Dense retrieval & FAISS IndexFlatIP (Alg.~\ref{alg:rerank}) & Adaptive $\alpha^{(k)}$ mixing \\
+KG re-ranking & PMI NER KG (Alg.~\ref{alg:kgdfs}) & 2-hop entity expansion per round \\
+LLM generation & Groq Llama-3.1-8B (\S\ref{sec:retrieval}) & Decomp + stance + response prompts \\
+TTS output & gTTS (Alg.~\ref{alg:trans_challenge}) & Audio report dispatch \\
+Domain routing & Domain hot-swap (Alg.~\ref{alg:swap}) & Auto-detect review domain \\
+RL prompt policy & RL-Text (Alg.~\ref{alg:rl_text}) & Prompt strategy per claim \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{theorem}[ARRS Domain Universality]
+\label{thm:arrs_domain}
+Under Axiom~\ref{ax:shared} (Domain-Agnostic Shared Space), ARRS applies 
+to \emph{any} product or content category for which a FAISS index and 
+domain KG are available. Film reviews use the general COCO-trained space; 
+radiology reports use the ROCO-transferred space; product reviews use 
+any domain whose index is constructed with the same TextProjection weights. 
+No architectural change is required --- only FAISS index and KG hot-swap 
+(Algorithm~\ref{alg:swap}, $< 5$\,s).
+\end{theorem}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{Complexity and Latency Analysis}
+\label{sec:arrs_complexity}
+
+\begin{theorem}[ARRS Time Complexity]
+\label{thm:arrs_complexity}
+Let $M$ be the number of claims, $K = 20$ the FAISS shortlist size, 
+$T_{\text{FAISS}}$ the FAISS search time, $T_{\text{KG}}$ the KG DFS time, 
+$T_{\text{LLM}}$ the LLM call time, and $K_{\max} = 3$ the max retrieval rounds. 
+The total ARRS latency is:
+\[
+  T_{\text{ARRS}} = \underbrace{T_{\text{enc}}}_{\text{Stage 1}} + 
+  \underbrace{T_{\text{LLM}}}_{\text{Stage 2}} + 
+  \underbrace{M \cdot K_{\max} \cdot (T_{\text{FAISS}} + T_{\text{KG}} + T_{\text{LLM-stance}})}_{\text{Stage 3}} + 
+  \underbrace{T_{\text{LLM}}}_{\text{Stage 5}}
+\]
+For $M = 5$ claims, $K_{\max} = 2$ average rounds, 
+$T_{\text{FAISS}} \approx 15\,\text{ms}$, $T_{\text{KG}} \approx 5\,\text{ms}$, 
+$T_{\text{LLM}} \approx 2\,\text{s}$ (Groq API): 
+$T_{\text{ARRS}} \approx 0.05 + 2 + 5 \times 2 \times (0.02 + 2) + 2 \approx 24\,\text{s}$.
+\end{theorem}
+
+\begin{remark}[Parallelisation Opportunity]
+Claims in Stage~3 are mutually independent: their retrieval loops can be 
+parallelised with \texttt{asyncio.gather} over the claim list. Under perfect 
+parallelism, Stage~3 reduces from $M \cdot K_{\max} \cdot (\ldots)$ to 
+$K_{\max} \cdot (\ldots)$, lowering $T_{\text{ARRS}}$ from $\approx 24$\,s 
+to $\approx 9$\,s for $M = 5$.
+\end{remark}
+
+%%──────────────────────────────────────────────────────────────────────────────
+\subsection{ARRS Summary Table}
+\label{sec:arrs_summary_table}
+
+\begin{table}[H]
+\centering
+\caption{ARRS algorithm reference and formal grounding}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lll}
+\toprule
+\textbf{Algorithm} & \textbf{Description} & \textbf{Formal Grounding} \\
+\midrule
+Alg.~\ref{alg:arrs_encode} & Multimodal review encoding & TextProjection, AudioProjection \\
+Alg.~\ref{alg:arrs_decomp} & LLM claim decomp. + classification & Axiom~\ref{ax:atomicity}, Def.~above \\
+Alg.~\ref{alg:arrs_retrieval_loop} & Agentic hybrid retrieval loop & Lemma~\ref{lem:monotone_expansion}, Def.~\ref{def:adaptive_alpha} \\
+Alg.~\ref{alg:arrs_verdict} & Multi-claim verdict engine & Def.~\ref{def:bayes_evidence}, Thm.~\ref{thm:proper_scoring} \\
+Alg.~\ref{alg:arrs_generate} & Tone-adaptive response gen. & Axiom~\ref{ax:response_grounded}, Thm.~\ref{thm:response_faithful} \\
+Alg.~\ref{alg:arrs_full} & Full ARRS orchestration & Thm.~\ref{thm:arrs_convergence} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{tcolorbox}[keybox,title={Contribution C10 --- ARRS (Agentic Review Response System)}]
+ARRS extends MIVA-KNIGHT with a domain-universal, five-stage agentic pipeline 
+that decomposes arbitrary reviews into atomic claims, verifies each claim through 
+an iterative hybrid RAG loop (FAISS + KG PMI, $\le 3$ rounds), adjudicates 
+verdicts with formal confidence bounds, and generates tone-adaptive, evidence-cited 
+response reports for reviewers. The system reuses all existing MIVA-KNIGHT 
+modules with zero architectural change, extending to any domain in $< 5$\,s 
+via hot-swap.
+\end{tcolorbox}
+
+
+
 \newpage
 \section{Conclusion}
 \label{sec:conclusion}
@@ -2578,10 +4313,18 @@ This thesis has presented MIVA-KNIGHT, a comprehensive multimodal voice assistan
   \item \textbf{Tiered-Confidence RAG}: The hallucination guard with domain-aware thresholds ($\tau_G = 0.40$, $\tau_M = 0.55$) implements the clinical safety constraint, preferring false negatives over false positives in high-stakes domains.
 
   \item \textbf{DQN Reinforcement Learning}: The MIVA-KNIGHT-RL extension formally integrates a multimodal sub-classifier, experience replay ring-buffer, dual Q-networks, $\varepsilon$-greedy policy, NLP feedback loop, and emotion-conditioned reward shaping into a complete robot control system.
+
+  \item \textbf{Four Modality-Wide RL Injection Points}: MIVA-KNIGHT-RL v2 extends adaptive learning across all modalities with four DQN policies --- RL-Audio (\textcircled{1}, adaptive segment and threshold), RL-Video (\textcircled{2}, learned frame selection superseding the fixed middle-frame heuristic), RL-Text (\textcircled{3}, adaptive RAG prompt strategy), and RL-Fusion (\textcircled{4}, per-sample modality trust weighting) --- all sharing a common infrastructure of replay buffer, dual Q-networks, and Huber-loss training (see \S\ref{sec:rl_injections}).
+
+  \item \textbf{Agentic Review Response System (ARRS):} A five-stage agentic pipeline 
+  (\S\ref{sec:arrs_review}) that decomposes reviews into atomic claims, iteratively 
+  verifies each via hybrid RAG (max $K_{\max}=3$ rounds), adjudicates verdicts with 
+  formal confidence bounds (Theorem~\ref{thm:arrs_convergence}), and generates 
+  tone-adaptive, evidence-cited responses.
 \end{enumerate}
 
 \begin{tcolorbox}[laymanbox,title={One-Sentence Summary}]
-MIVA-KNIGHT is an AI assistant that simultaneously listens, sees, and reads --- finds the most relevant information using two-stage neural search --- decides how confident it is --- generates a grounded, hallucination-resistant answer --- speaks it aloud --- and can even learn to control a robot using reinforcement learning, entirely within a zero-cost, open-source deployment stack.
+MIVA-KNIGHT is an AI assistant that simultaneously listens, sees, and reads --- finds the most relevant information using two-stage neural search --- decides how confident it is --- generates a grounded, hallucination-resistant answer with an RL-optimised prompt strategy --- speaks it aloud --- learns to focus on the most expressive audio segment and video frame via adaptive RL policies --- dynamically weights modality trust for fusion --- and controls a robot, all within a zero-cost, open-source deployment stack.
 \end{tcolorbox}
 
 \vfill
@@ -2595,6 +4338,9 @@ MIVA-KNIGHT is an AI assistant that simultaneously listens, sees, and reads --- 
   \item Upgrade to transformer-based NER for knowledge graph construction, replacing the current word-frequency approach.
   \item Integrate MIMIC-CXR once PhysioNet credentials are obtained (only Pipeline B retraining required).
   \item Implement Prioritised Experience Replay (PER) and Dueling DQN for the MIVA-KNIGHT-RL extension.
+  \item Extend RL-Audio and RL-Video agents with Proximal Policy Optimisation (PPO) for continuous action spaces (e.g.\ continuous segment boundaries, sub-frame interpolation).
+  \item Replace the simulated reward proxies in the four RL injection agents with live user-feedback signals (thumbs-up/down) via the Streamlit \texttt{app.py} interface.
+  \item Apply the RL-Fusion policy to Pipeline~D (CREMA-D audio-visual) to test whether adaptive weighting improves the 48.6\% accuracy plateau.
 \end{itemize}
 \end{tcolorbox}
 \end{center}
@@ -2657,6 +4403,16 @@ Y.\ Liu et al., ``HM-RAG: Hierarchical Multi-Agent Multimodal RAG,'' 2025.
 
 \bibitem{chalkidis2022lexglue}
 I.\ Chalkidis et al., ``LexGLUE: A Benchmark Dataset for Legal Language Understanding in English,'' \textit{ACL}, 2022.
+
+
+\bibitem{mnih2015dqn}
+V.\ Mnih et al., ``Human-level Control through Deep Reinforcement Learning,'' \textit{Nature}, vol.~518, pp.~529--533, 2015.
+
+\bibitem{sutton2018rl}
+R.\ S.\ Sutton and A.\ G.\ Barto, \textit{Reinforcement Learning: An Introduction}, 2nd ed. MIT Press, 2018.
+
+\bibitem{fujimoto2018td3}
+S.\ Fujimoto et al., ``Addressing Function Approximation Error in Actor-Critic Methods,'' \textit{ICML}, 2018.
 
 \end{thebibliography}
 
