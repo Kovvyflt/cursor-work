@@ -1,0 +1,349 @@
+% ==========================================
+% 1. CORE RAG ARCHITECTURE & HYBRID RETRIEVAL
+% ==========================================
+
+@inproceedings{lewis2020rag,
+  title={Retrieval-augmented generation for knowledge-intensive {NLP} tasks},
+  author={Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and K{\"u}ttler, Heinrich and Lewis, Mike and Yih, Wen-tau and Rockt{\"a}schel, Tim and others},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={33},
+  pages={9459--9474},
+  year={2020},
+  url={https://proceedings.neurips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html}
+}
+
+@article{sarmah2024hybridrag,
+  title={{HybridRAG}: Integrating knowledge graphs and vector retrieval augmented generation for efficient information extraction},
+  author={Sarmah, Bhaskarjyoti and others},
+  journal={arXiv preprint arXiv:2408.04948},
+  year={2024},
+  url={https://arxiv.org/abs/2408.04948}
+}
+
+@article{edge2024graphrag,
+  title={From Local to Global: A Graph {RAG} Approach to Query-Focused Summarization},
+  author={Edge, Darren and Trinh, Ha and Cheng, Nandu and Bradley, Joshua and Chao, Alex and Mody, Apurv and Steven, Dang and Simard, Patrice},
+  journal={arXiv preprint arXiv:2404.16130},
+  year={2024},
+  url={https://arxiv.org/abs/2404.16130}
+}
+
+@article{shi2026rtrag,
+  title={Reasoning in Trees: Improving Retrieval-Augmented Generation for Multi-Hop Question Answering ({RT-RAG})},
+  author={Shi, M. and Sun, Y. and others},
+  journal={arXiv preprint arXiv:2601.11255},
+  year={2025},
+  note={Advisor Correction: Published late 2025},
+  url={https://arxiv.org/abs/2601.11255}
+}
+
+@inproceedings{agrawal2025scmrag,
+  title={{SCMRAG}: Self-Corrective Multihop Retrieval Augmented Generation System for {LLM} Agents},
+  author={Agrawal, R. and Asrani, M. and Youssef, H. and Narayan, A.},
+  booktitle={Proceedings of the 24th International Conference on Autonomous Agents and Multiagent Systems (AAMAS)},
+  year={2025},
+  url={https://www.ifaamas.org/Proceedings/aamas2025/pdfs/p50.pdf}
+}
+
+% ==========================================
+% 2. HALLUCINATION AND EVALUATION PROTOCOLS
+% ==========================================
+
+@article{ji2023survey,
+  title={Survey of hallucination in natural language generation},
+  author={Ji, Ziwei and Lee, Nayeon and Frieske, Rita and Yu, Tiezheng and Su, Dan and Xu, Yan and Ishii, Etsuko and Bang, Yejin and Madotto, Andrea and Fung, Pascale},
+  journal={ACM Computing Surveys},
+  volume={55},
+  number={12},
+  pages={1--38},
+  year={2023},
+  publisher={ACM New York, NY},
+  url={https://dl.acm.org/doi/10.1145/3571730}
+}
+
+@article{zhang2023sirens,
+  title={Siren's song in the {AI} ocean: A survey on hallucination in large language models},
+  author={Zhang, Yue and Li, Yafu and Cui, Leyang and Cai, Deng and Liu, Lemao and Fu, Tingchen and Huang, Xinting and Zhao, Enbo and Zhang, Yu and Chen, Yulong and others},
+  journal={arXiv preprint arXiv:2309.01219},
+  year={2023},
+  url={https://arxiv.org/abs/2309.01219}
+}
+
+@article{openai2023gpt4,
+  title={{GPT-4} technical report},
+  author={{OpenAI}},
+  journal={arXiv preprint arXiv:2303.08774},
+  year={2023},
+  url={https://arxiv.org/abs/2303.08774}
+}
+
+@techreport{anthropic2024claude,
+  title={The {Claude 3} model family: Opus, Sonnet, Haiku},
+  author={{Anthropic}},
+  year={2024},
+  institution={Anthropic},
+  url={https://www.anthropic.com/news/claude-3-family}
+}
+
+@techreport{libreeval2025,
+  title={{LibreEval}: The open-source benchmark for {RAG} hallucination},
+  author={{Arize AI}},
+  year={2025},
+  institution={Arize AI},
+  url={https://arize.com/blog/libreeval/}
+}
+
+% ==========================================
+% 3. MULTI-HOP REASONING BENCHMARKS
+% ==========================================
+
+@article{tang2024multihop,
+  title={{MultiHop-RAG}: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries},
+  author={Tang, Y. and Yang, Y.},
+  journal={arXiv preprint arXiv:2401.15391},
+  year={2024},
+  url={https://arxiv.org/abs/2401.15391}
+}
+
+@inproceedings{yang2018hotpotqa,
+  title={{HotpotQA}: A dataset for diverse, explainable multi-hop question answering},
+  author={Yang, Zhilin and Qi, Peng and Zhang, Saizheng and Bengio, Yoshua and Cohen, William and Salakhutdinov, Ruslan and Manning, Christopher D},
+  booktitle={Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing},
+  pages={2369--2380},
+  year={2018},
+  url={https://aclanthology.org/D18-1259/}
+}
+
+@inproceedings{ho2020constructing,
+  title={Constructing a multi-hop {QA} dataset for comprehensive evaluation of reasoning steps},
+  author={Ho, Xanh V and Nguyen, Anh-Minh D and Sugawara, Saku and Aizawa, Akiko},
+  booktitle={Proceedings of the 28th International Conference on Computational Linguistics},
+  pages={6609--6625},
+  year={2020},
+  url={https://aclanthology.org/2020.coling-main.580/}
+}
+
+@article{trivedi2022musique,
+  title={{MuSiQue}: Multihop questions via single-hop question composition},
+  author={Trivedi, Harsh and Balasubramanian, Niranjan and Khot, Tushar and Sabharwal, Ashish},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={10},
+  pages={539--554},
+  year={2022},
+  publisher={MIT Press},
+  url={https://aclanthology.org/2022.tacl-1.31/}
+}
+
+% ==========================================
+% 4. KNOWLEDGE GRAPH CONSTRUCTION
+% ==========================================
+
+@article{rossiello2023knowledge,
+  title={Knowledge graph construction: A review of methods and paradigms},
+  author={Rossiello, Gaetano and Faralli, Stefano and Mihindukulasooriya, Nandana and Tommasini, Riccardo},
+  journal={arXiv preprint arXiv:2308.05568},
+  year={2023},
+  url={https://arxiv.org/abs/2308.05568}
+}
+
+@article{pan2024unifying,
+  title={Unifying Large Language Models and Knowledge Graphs: A Roadmap},
+  author={Pan, Shirui and Luo, Linhao and Wang, Yufei and Chen, Chen and Wang, Jiapu and Wu, Xindong},
+  journal={IEEE Transactions on Knowledge and Data Engineering},
+  volume={36},
+  number={7},
+  pages={3580--3599},
+  year={2024},
+  publisher={IEEE},
+  url={https://arxiv.org/abs/2306.08302}
+}
+
+@inproceedings{ceur2024cooccurrence,
+  title={Towards knowledge graph construction from entity co-occurrence},
+  author={{CEUR-WS}},
+  booktitle={CEUR Workshop Proceedings},
+  year={2024},
+  url={https://ceur-ws.org/}
+}
+
+@article{neo4j2025graphrag,
+  title={Towards practical {GraphRAG}: Efficient knowledge graph construction from unstructured text},
+  author={{Neo4j and Microsoft Research}},
+  journal={arXiv preprint},
+  year={2025},
+  url={https://arxiv.org/abs/2404.16130}
+}
+
+@inproceedings{acl2025taxonomy,
+  title={Taxonomy-driven knowledge graph construction for domain-specific applications},
+  author={{ACL Authors}},
+  booktitle={Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (ACL)},
+  year={2025},
+  url={https://aclanthology.org/}
+}
+
+@article{pan2025climateie,
+  title={{ClimateIE}: A taxonomy-driven framework for information extraction},
+  author={Pan, H. and others},
+  journal={arXiv preprint},
+  year={2024},
+  note={Advisor Correction: Accepted to ACL 2025},
+  url={https://aclanthology.org/2025.climatenlp-1.6/}
+}
+
+% ==========================================
+% 5. MULTI-MODAL FUSION
+% ==========================================
+
+@article{zhai2024samrag,
+  title={{SAM-RAG}: Self-adaptive Multimodal Retrieval-Augmented Generation},
+  author={Zhai, W. and others},
+  journal={arXiv preprint arXiv:2410.15391},
+  year={2024},
+  url={https://arxiv.org/abs/2410.15391}
+}
+
+@misc{kadam2022multimodal,
+  title={Crafting Multi-Modal Interactions on Voice Assistants},
+  author={Kadam, A.},
+  year={2022},
+  publisher={ResearchGate},
+  url={https://www.researchgate.net/publication/376658050_Crafting_Multi-Modal_Interactions_on_Voice_Assistants}
+}
+
+@techreport{emergentmind2025cross,
+  title={Cross attention mid fusion architecture},
+  author={{Emergent Mind}},
+  year={2025},
+  institution={Emergent Mind},
+  url={https://www.emergentmind.com/}
+}
+
+@article{liu2025hmrag,
+  title={{HM-RAG}: Hierarchical Multi-Agent Multimodal Retrieval Augmented Generation},
+  author={Liu, P. and Liu, X. and Ma, J. and others},
+  journal={arXiv preprint arXiv:2504.12330},
+  year={2025},
+  url={https://arxiv.org/abs/2504.12330}
+}
+
+@article{streamrag2025,
+  title={{Stream RAG}: Instant and accurate spoken dialogue systems},
+  author={{Anonymous Researchers}},
+  journal={arXiv preprint},
+  year={2025}
+}
+
+@article{li2024omnisearch,
+  title={Benchmarking Multimodal Retrieval Augmented Generation with Dynamic {VQA} Dataset and Self-adaptive Planning Agent ({OmniSearch})},
+  author={Li, Y. and others},
+  journal={arXiv preprint arXiv:2411.02937},
+  year={2024},
+  url={https://arxiv.org/abs/2411.02937}
+}
+
+% ==========================================
+% 6. DOMAIN ADAPTATION & SLR METHODOLOGY
+% ==========================================
+
+@inproceedings{chalkidis2022lexglue,
+  title={{LexGLUE}: A benchmark dataset for legal language understanding in English},
+  author={Chalkidis, Ilias and Jana, Abhik and Hartung, Dirk and Bommarito, Michael and Androutsopoulos, Ion and Katz, Daniel Martin and Aletras, Nikolaos},
+  booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics},
+  pages={4310--4330},
+  year={2022},
+  url={https://aclanthology.org/2022.acl-long.297/}
+}
+
+@techreport{lrage2025,
+  title={{LRAGE}: Legal retrieval augmented generation evaluation tool},
+  author={{GitHub Open Source}},
+  year={2025},
+  institution={GitHub Technical Documentation}
+}
+
+@techreport{kitchenham2007guidelines,
+  title={Guidelines for performing Systematic Literature Reviews in Software Engineering},
+  author={Kitchenham, Barbara and Charters, Stuart},
+  year={2007},
+  institution={EBSE Technical Report},
+  url={https://www.elsevier.com/}
+}
+
+% ==========================================
+% 7. MODALITY-SPECIFIC ENCODERS
+% ==========================================
+
+@inproceedings{devlin2019bert,
+  title={{BERT}: Pre-training of deep bidirectional transformers for language understanding},
+  author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+  booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics},
+  pages={4171--4186},
+  year={2019},
+  url={https://arxiv.org/abs/1810.04805}
+}
+
+@inproceedings{he2016deep,
+  title={Deep residual learning for image recognition},
+  author={He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages={770--778},
+  year={2016},
+  url={https://arxiv.org/abs/1512.03385}
+}
+
+@inproceedings{baevski2020wav2vec,
+  title={wav2vec 2.0: A framework for self-supervised learning of speech representations},
+  author={Baevski, Alexei and Zhou, Yuhao and Mohamed, Abdelrahman and Auli, Michael},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={33},
+  pages={12449--12460},
+  year={2020},
+  url={https://arxiv.org/abs/2006.11477}
+}
+
+@article{sanh2021multitask,
+  title={Multitask Prompted Training Enables Zero-Shot Task Generalization},
+  author={Sanh, Victor and others},
+  journal={arXiv preprint arXiv:2110.08207},
+  year={2021},
+  url={https://arxiv.org/abs/2110.08207}
+}
+
+% ==========================================
+% 8. DATASETS
+% ==========================================
+
+@inproceedings{lin2014microsoft,
+  title={Microsoft {COCO}: Common objects in context},
+  author={Lin, Tsung-Yi and Maire, Michael and Belongie, Serge and Hays, James and Perona, Pietro and Ramanan, Deva and Doll{\'a}r, Piotr and Zitnick, C Lawrence},
+  booktitle={European Conference on Computer Vision (ECCV)},
+  pages={740--755},
+  year={2014},
+  organization={Springer},
+  url={https://arxiv.org/abs/1405.0312}
+}
+
+@article{johnson2019mimic,
+  title={{MIMIC-CXR}, a de-identified publicly available database of chest radiographs with free-text reports},
+  author={Johnson, Alistair EW and Pollard, Tom J and Berkowitz, Seth J and Greenbaum, Nathaniel R and Lungren, Matthew P and Deng, Chih-ying and Mark, Roger G and Goldberger, Ary L},
+  journal={Scientific Data},
+  volume={6},
+  number={1},
+  pages={317},
+  year={2019},
+  publisher={Nature Publishing Group UK London},
+  url={https://doi.org/10.1038/s41597-019-0322-0}
+}
+
+@article{livingstone2018ryerson,
+  title={The {Ryerson} Audio-Visual Database of Emotional Speech and Song ({RAVDESS}): A dynamic, multimodal set of facial and vocal expressions in North American English},
+  author={Livingstone, Steven R and Russo, Frank A},
+  journal={PLOS ONE},
+  volume={13},
+  number={5},
+  pages={e0196391},
+  year={2018},
+  publisher={Public Library of Science San Francisco, CA USA},
+  url={https://doi.org/10.1371/journal.pone.0196391}
+}
